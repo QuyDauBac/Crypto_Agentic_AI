@@ -1,0 +1,22 @@
+# Môi trường ảo
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Biến môi trường (KHÔNG commit key API)
+.env
+
+# Database SQLite
+*.db
+*.sqlite3
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
