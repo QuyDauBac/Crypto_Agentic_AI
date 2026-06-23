@@ -1,0 +1,28 @@
+# ── Web framework ──
+fastapi
+uvicorn[standard]
+
+# ── Templating ──
+jinja2
+python-multipart          # đọc form data (login/register POST)
+
+# ── Database ──
+sqlalchemy
+
+# ── Config ──
+pydantic-settings         # load .env vào Settings
+
+# ── Auth ──
+python-jose[cryptography] # tạo/verify JWT
+passlib[bcrypt]           # hash password (bcrypt)
+email-validator           # EmailStr trong Pydantic schema
+
+# ── External API ──
+httpx                     # gọi CoinGecko / CryptoPanic (async)
+google-genai              # AI Agent (Gemini)
+
+# ── Jobs ──
+apscheduler               # job kiểm tra giá / proactive agent
+
+# ── Test ──
+pytest
