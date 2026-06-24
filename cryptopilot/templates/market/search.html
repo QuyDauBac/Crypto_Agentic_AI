@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Tìm coin & giá — CryptoPilot{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+
+    <h3 class="mb-3">🔍 Tìm coin &amp; giá real-time</h3>
+
+    <form method="get" action="/market" class="mb-4">
+      <div class="input-group input-group-lg">
+        <input type="text" name="q" value="{{ q }}" class="form-control"
+               placeholder="Nhập tên hoặc symbol (bitcoin, eth, sol...)" autofocus>
+        <button class="btn btn-primary" type="submit">Tìm</button>
+      </div>
+    </form>
+
+    {% if stale %}
+    <div class="alert alert-warning py-2" role="alert">
+      ⚠️ Không lấy được giá mới từ CoinGecko — đang hiển thị <strong>dữ liệu cũ</strong> (cache).
+    </div>
+    {% endif %}
+
+    {% if q and not results %}
+    <div class="alert alert-secondary">Không tìm thấy coin nào khớp "<strong>{{ q }}</strong>".</div>
+    {% endif %}
+
+    {% if results %}
+    <div class="card shadow-sm border-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Coin</th>
+              <th>Symbol</th>
+              <th class="text-end">Giá (USD)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for coin in results %}
+            <tr>
+              <td>
+                {% if coin.image_url %}
+                <img src="{{ coin.image_url }}" alt="" width="22" height="22" class="me-2 rounded-circle">
+                {% endif %}
+                {{ coin.name }}
+              </td>
+              <td><span class="badge bg-secondary text-uppercase">{{ coin.symbol }}</span></td>
+              <td class="text-end fw-semibold price-cell" data-coin-id="{{ coin.coingecko_id }}">
+                {% if prices.get(coin.coingecko_id) is not none %}
+                  ${{ '%.4f'|format(prices[coin.coingecko_id]) }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="text-muted small mt-2 mb-0">
+      Giá tự cập nhật mỗi 30 giây · nguồn: CoinGecko
+      <span id="last-updated"></span>
+    </p>
+    {% endif %}
+
+  </div>
+</div>
+
+{% if results %}
+<script>
+  // Poll giá định kỳ để minh họa "real-time" (Phase 2). Gọi JSON endpoint của chính router.
+  const coinIds = [{% for coin in results %}"{{ coin.coingecko_id }}"{% if not loop.last %},{% endif %}{% endfor %}];
+
+  async function refreshPrices() {
+    try {
+      const res = await fetch(`/market/api/prices?ids=${encodeURIComponent(coinIds.join(","))}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      for (const [cid, price] of Object.entries(data.prices || {})) {
+        const cell = document.querySelector(`.price-cell[data-coin-id="${cid}"]`);
+        if (cell) cell.textContent = "$" + Number(price).toFixed(4);
+      }
+      const stamp = document.getElementById("last-updated");
+      if (stamp) {
+        stamp.textContent = data.stale
+          ? "· ⚠️ dữ liệu cũ"
+          : "· cập nhật lúc " + new Date().toLocaleTimeString("vi-VN");
+      }
+    } catch (e) { /* graceful: lỗi mạng thì giữ giá cũ, không phá trang */ }
+  }
+
+  setInterval(refreshPrices, 30000);
+</script>
+{% endif %}
+{% endblock %}

@@ -5,5 +5,6 @@ Thêm model mới ở các phase sau thì import vào đây:
 """
 
 from app.models.user import User
+from app.models.coin import Coin  # noqa: F401
 
 __all__ = ["User"]

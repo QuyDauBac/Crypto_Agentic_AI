@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import auth, deps
+from app.api import auth, deps, market
 from app.core.database import Base, engine, get_db
 from app.models.user import User
 
@@ -41,6 +41,7 @@ app = FastAPI(title="CryptoPilot", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 app.include_router(auth.router)
+app.include_router(market.router)
 
 
 @app.exception_handler(StarletteHTTPException)
