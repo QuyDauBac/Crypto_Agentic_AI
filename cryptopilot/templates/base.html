@@ -15,11 +15,20 @@
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="nav">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item"><a class="nav-link" href="/portfolio">Danh mục</a></li>
-          <li class="nav-item"><a class="nav-link" href="/alerts">Cảnh báo</a></li>
-          <li class="nav-item"><a class="nav-link" href="/agent/chat">AI Agent</a></li>
-          <li class="nav-item"><a class="nav-link" href="/login">Đăng nhập</a></li>
+        <ul class="navbar-nav ms-auto align-items-lg-center">
+          {% if user %}
+            <li class="nav-item"><a class="nav-link" href="/portfolio">Danh mục</a></li>
+            <li class="nav-item">
+              <form method="post" action="/logout" class="d-inline m-0">
+                <button class="btn btn-sm btn-outline-light ms-lg-2" type="submit">
+                  Đăng xuất ({{ user.display_name or user.email }})
+                </button>
+              </form>
+            </li>
+          {% else %}
+            <li class="nav-item"><a class="nav-link" href="/login">Đăng nhập</a></li>
+            <li class="nav-item"><a class="nav-link" href="/register">Đăng ký</a></li>
+          {% endif %}
         </ul>
       </div>
     </div>

@@ -2,19 +2,24 @@
 
 - Khởi tạo FastAPI, mount static + Jinja2 templates
 - Tạo bảng DB lúc startup (lifespan)
-- Chỗ để start/stop APScheduler ở các phase sau (jobs/)
-- Route nền tạm: trang chủ + /health
+- Mount router auth; route /portfolio được bảo vệ (demo Phase 1)
+- Handler 401 → redirect /login (cho auth dạng cookie/server-rendered)
 """
 
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, Request, status
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.database import Base, engine
+from app.api import auth, deps
+from app.core.database import Base, engine, get_db
+from app.models.user import User
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -22,15 +27,11 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Import models để chúng được đăng ký với Base trước khi create_all.
-    # (Hiện chưa có model nào — sẽ thêm ở bước tiếp theo: User, Coin, ...)
-    from app import models  # noqa: F401
+    from app import models  # noqa: F401  — đăng ký models trước create_all
 
     Base.metadata.create_all(bind=engine)
 
     # TODO (Phase 5): start APScheduler ở đây
-    #   from app.jobs.scheduler import start_scheduler
-    #   scheduler = start_scheduler()
     yield
     # TODO (Phase 5): scheduler.shutdown()
 
@@ -39,19 +40,32 @@ app = FastAPI(title="CryptoPilot", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+app.include_router(auth.router)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def auth_redirect_handler(request: Request, exc: StarletteHTTPException):
+    """Route được bảo vệ ném 401 → đưa user về trang đăng nhập."""
+    if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    return await http_exception_handler(request, exc)
+
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    # Starlette API mới: request đứng đầu, rồi tên template, rồi context (optional)
-    return templates.TemplateResponse(request, "index.html")
+def index(request: Request, db: Session = Depends(get_db)):
+    user = deps.get_current_user_optional(request, db)
+    return templates.TemplateResponse(request, "index.html", {"user": user})
 
 
 @app.get("/health")
 def health():
-    """Healthcheck đơn giản — xác nhận app chạy."""
     return {"status": "ok", "app": "CryptoPilot"}
 
 
-# Các router theo feature sẽ include ở các phase sau:
-#   from app.api import auth, portfolio, market, alerts, agent
-#   app.include_router(auth.router)
+# Demo Phase 1: route bảo vệ — chứng minh auth hoạt động end-to-end.
+# TODO (Phase 3): chuyển sang app/api/portfolio.py với dashboard danh mục thật.
+@app.get("/portfolio", response_class=HTMLResponse)
+def portfolio(request: Request, user: User = Depends(deps.get_current_user)):
+    return templates.TemplateResponse(
+        request, "portfolio/dashboard.html", {"user": user}
+    )

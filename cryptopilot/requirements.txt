@@ -14,7 +14,7 @@ pydantic-settings         # load .env vào Settings
 
 # ── Auth ──
 python-jose[cryptography] # tạo/verify JWT
-passlib[bcrypt]           # hash password (bcrypt)
+bcrypt                    # hash password (dùng trực tiếp, không qua passlib)
 email-validator           # EmailStr trong Pydantic schema
 
 # ── External API ──

@@ -1,24 +1,31 @@
-"""Tiện ích bảo mật — hash password (bcrypt) + tạo/giải mã JWT.
+"""Tiện ích bảo mật — hash password (bcrypt trực tiếp) + tạo/giải mã JWT.
 
-Các hàm thuần (không đụng DB), dùng lại cho auth ở bước tiếp theo.
+Dùng thẳng thư viện `bcrypt` (không qua passlib): gọn, không phụ thuộc lib đã ngừng
+bảo trì, không vướng xung đột version. bcrypt chỉ xử lý tối đa 72 byte đầu của mật khẩu
+nên ta cắt chủ động để tránh ValueError ở bản bcrypt mới.
 """
 
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_BCRYPT_MAX_BYTES = 72
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    pw = plain.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    return bcrypt.hashpw(pw, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    pw = plain.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    try:
+        return bcrypt.checkpw(pw, hashed.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def create_access_token(subject: str | int, expires_minutes: int | None = None) -> str:
