@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Giao dịch — CryptoPilot{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">💱 Giao dịch</h3>
+  <a href="/portfolio" class="btn btn-outline-secondary btn-sm">← Về danh mục</a>
+</div>
+
+{% if error %}
+<div class="alert alert-danger py-2">Dữ liệu không hợp lệ — kiểm tra lại số lượng, giá và coin.</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <h6 class="card-title mb-3">{{ 'Sửa giao dịch #' ~ editing.id if editing else 'Thêm giao dịch' }}</h6>
+    <form method="post"
+          action="{{ '/portfolio/transactions/' ~ editing.id ~ '/edit' if editing else '/portfolio/transactions' }}">
+      <div class="row g-2">
+        <div class="col-md-6 position-relative">
+          <label class="form-label small">Coin</label>
+          <input type="text" id="coin-search" class="form-control" autocomplete="off"
+                 placeholder="Tìm coin (bitcoin, eth...)"
+                 value="{{ (editing.coin.name ~ ' (' ~ editing.coin.symbol|upper ~ ')') if editing else '' }}">
+          <div id="coin-results" class="list-group position-absolute w-100 shadow"
+               style="z-index:1000; max-height:240px; overflow:auto;"></div>
+          <input type="hidden" name="coingecko_id" id="coingecko_id"
+                 value="{{ editing.coin.coingecko_id if editing else '' }}" required>
+          <input type="hidden" name="symbol" id="symbol" value="{{ editing.coin.symbol if editing else '' }}">
+          <input type="hidden" name="name" id="name" value="{{ editing.coin.name if editing else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Loại</label>
+          <select name="type" class="form-select" required>
+            <option value="buy" {{ 'selected' if editing and editing.type == 'buy' else '' }}>Mua (buy)</option>
+            <option value="sell" {{ 'selected' if editing and editing.type == 'sell' else '' }}>Bán (sell)</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Thời điểm</label>
+          <input type="datetime-local" name="executed_at" class="form-control" required
+                 value="{{ editing.executed_at.strftime('%Y-%m-%dT%H:%M') if editing else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Số lượng</label>
+          <input type="number" step="any" min="0" name="quantity" class="form-control" required
+                 value="{{ editing.quantity if editing else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Giá (USD/coin)</label>
+          <input type="number" step="any" min="0" name="price" class="form-control" required
+                 value="{{ editing.price if editing else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Phí (tùy chọn)</label>
+          <input type="number" step="any" min="0" name="fee" class="form-control"
+                 value="{{ editing.fee if editing and editing.fee is not none else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Ghi chú</label>
+          <input type="text" name="note" class="form-control" value="{{ editing.note or '' if editing else '' }}">
+        </div>
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="btn btn-primary">{{ 'Lưu thay đổi' if editing else 'Thêm' }}</button>
+        {% if editing %}<a href="/portfolio/transactions" class="btn btn-link">Hủy</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Thời điểm</th><th>Coin</th><th>Loại</th>
+          <th class="text-end">Số lượng</th><th class="text-end">Giá</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tx in txs %}
+        <tr>
+          <td class="small">{{ tx.executed_at.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td><strong>{{ tx.coin.name }}</strong> <span class="text-muted text-uppercase small">{{ tx.coin.symbol }}</span></td>
+          <td>
+            <span class="badge {{ 'bg-success' if tx.type == 'buy' else 'bg-danger' }}">
+              {{ 'Mua' if tx.type == 'buy' else 'Bán' }}
+            </span>
+          </td>
+          <td class="text-end">{{ '%.8f'|format(tx.quantity) }}</td>
+          <td class="text-end">${{ '%.4f'|format(tx.price) }}</td>
+          <td class="text-end text-nowrap">
+            <a href="/portfolio/transactions?edit={{ tx.id }}" class="btn btn-sm btn-outline-secondary">Sửa</a>
+            <form method="post" action="/portfolio/transactions/{{ tx.id }}/delete" class="d-inline"
+                  onsubmit="return confirm('Xóa giao dịch này?');">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Xóa</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Chưa có giao dịch nào.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // Search coin (tái dùng endpoint Phase 2 /market/api/search), chọn → điền hidden fields.
+  const searchInput = document.getElementById("coin-search");
+  const resultsBox = document.getElementById("coin-results");
+  let timer = null;
+
+  searchInput.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = searchInput.value.trim();
+    if (q.length < 2) { resultsBox.innerHTML = ""; return; }
+    timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/market/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) return;
+        const coins = await res.json();
+        resultsBox.innerHTML = coins.slice(0, 8).map(c =>
+          `<button type="button" class="list-group-item list-group-item-action"
+             data-id="${c.coingecko_id}" data-symbol="${c.symbol}" data-name="${c.name.replace(/"/g,'&quot;')}">
+             ${c.name} <span class="text-muted text-uppercase">${c.symbol}</span>
+           </button>`).join("");
+      } catch (e) { /* lỗi mạng: bỏ qua, không phá form */ }
+    }, 300);
+  });
+
+  resultsBox.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-id]");
+    if (!btn) return;
+    document.getElementById("coingecko_id").value = btn.dataset.id;
+    document.getElementById("symbol").value = btn.dataset.symbol;
+    document.getElementById("name").value = btn.dataset.name;
+    searchInput.value = `${btn.dataset.name} (${btn.dataset.symbol.toUpperCase()})`;
+    resultsBox.innerHTML = "";
+  });
+</script>
+{% endblock %}

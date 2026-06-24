@@ -2,7 +2,7 @@
 
 - Khởi tạo FastAPI, mount static + Jinja2 templates
 - Tạo bảng DB lúc startup (lifespan)
-- Mount router auth; route /portfolio được bảo vệ (demo Phase 1)
+- Mount các router: auth, market, portfolio
 - Handler 401 → redirect /login (cho auth dạng cookie/server-rendered)
 """
 
@@ -17,9 +17,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import auth, deps, market
+from app.api import auth, deps, market, portfolio
 from app.core.database import Base, engine, get_db
-from app.models.user import User
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -42,6 +41,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 app.include_router(auth.router)
 app.include_router(market.router)
+app.include_router(portfolio.router)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -61,12 +61,3 @@ def index(request: Request, db: Session = Depends(get_db)):
 @app.get("/health")
 def health():
     return {"status": "ok", "app": "CryptoPilot"}
-
-
-# Demo Phase 1: route bảo vệ — chứng minh auth hoạt động end-to-end.
-# TODO (Phase 3): chuyển sang app/api/portfolio.py với dashboard danh mục thật.
-@app.get("/portfolio", response_class=HTMLResponse)
-def portfolio(request: Request, user: User = Depends(deps.get_current_user)):
-    return templates.TemplateResponse(
-        request, "portfolio/dashboard.html", {"user": user}
-    )

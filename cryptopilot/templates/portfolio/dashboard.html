@@ -1,13 +1,108 @@
 {% extends "base.html" %}
 {% block title %}Danh mục — CryptoPilot{% endblock %}
+{% macro money(v) %}{% if v is none %}<span class="text-muted">—</span>{% else %}${{ '%.2f'|format(v) }}{% endif %}{% endmacro %}
+{% macro pnl(v, pct) %}
+  {% if v is none %}<span class="text-muted">—</span>
+  {% else %}
+    <span class="{{ 'text-success' if v >= 0 else 'text-danger' }}">
+      {{ '+' if v >= 0 else '' }}${{ '%.2f'|format(v) }}{% if pct is not none %} ({{ '%.2f'|format(pct) }}%){% endif %}
+    </span>
+  {% endif %}
+{% endmacro %}
 {% block content %}
-<div class="card shadow-sm border-0">
-  <div class="card-body p-4">
-    <h4 class="mb-1">Xin chào, {{ user.display_name or user.email }} 👋</h4>
-    <p class="text-muted mb-0">
-      Đây là route được bảo vệ — bạn thấy được trang này nghĩa là auth hoạt động.
-      Dashboard danh mục thật sẽ thêm ở Phase 3.
-    </p>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">📊 Danh mục của bạn</h3>
+  <a href="/portfolio/transactions" class="btn btn-outline-primary btn-sm">Quản lý giao dịch</a>
+</div>
+
+{% if d.stale %}
+<div class="alert alert-warning py-2">⚠️ Giá đang là <strong>dữ liệu cũ</strong> (CoinGecko tạm lỗi).</div>
+{% endif %}
+
+{% if not d.holdings %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body text-center p-5">
+    <p class="lead text-muted mb-3">Chưa có giao dịch nào.</p>
+    <a href="/portfolio/transactions" class="btn btn-primary">+ Thêm giao dịch đầu tiên</a>
   </div>
 </div>
+{% else %}
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Tổng giá trị hiện tại</div>
+      <div class="fs-4 fw-bold">{{ money(d.total_value) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Tổng giá vốn</div>
+      <div class="fs-4 fw-bold">{{ money(d.total_cost) }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100"><div class="card-body">
+      <div class="text-muted small">Lãi/Lỗ chưa thực hiện</div>
+      <div class="fs-4 fw-bold">{{ pnl(d.total_pnl, d.total_pnl_pct) }}</div>
+    </div></div>
+  </div>
+</div>
+
+{% if d.benchmark and d.benchmark.btc_change_pct is not none %}
+<div class="alert alert-light border d-flex justify-content-between small">
+  <span>📈 Hiệu suất danh mục:
+    <strong class="{{ 'text-success' if (d.benchmark.portfolio_return_pct or 0) >= 0 else 'text-danger' }}">
+      {{ '%.2f'|format(d.benchmark.portfolio_return_pct or 0) }}%
+    </strong>
+  </span>
+  <span class="text-muted">so với Bitcoin {{ d.benchmark.days }} ngày:
+    <strong class="{{ 'text-success' if d.benchmark.btc_change_pct >= 0 else 'text-danger' }}">
+      {{ '%.2f'|format(d.benchmark.btc_change_pct) }}%
+    </strong>
+    <span class="ms-1" title="So sánh thô — hiệu suất danh mục tính trên giá vốn, BTC tính trên cửa sổ N ngày, không cùng mốc thời gian">ⓘ</span>
+  </span>
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Coin</th>
+          <th class="text-end">Số lượng</th>
+          <th class="text-end">Giá vốn TB</th>
+          <th class="text-end">Giá hiện tại</th>
+          <th class="text-end">Giá trị</th>
+          <th class="text-end">Lãi/Lỗ</th>
+          <th style="min-width:140px">Tỷ trọng</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in d.holdings %}
+        <tr>
+          <td><strong>{{ h.name }}</strong> <span class="badge bg-secondary text-uppercase">{{ h.symbol }}</span></td>
+          <td class="text-end">{{ '%.8f'|format(h.net_quantity) }}</td>
+          <td class="text-end">{{ money(h.avg_cost_price) }}</td>
+          <td class="text-end">{{ money(h.current_price) }}</td>
+          <td class="text-end">{{ money(h.current_value) }}</td>
+          <td class="text-end">{{ pnl(h.unrealized_pnl, h.pnl_pct) }}</td>
+          <td>
+            {% if h.allocation_pct is not none %}
+            <div class="progress" style="height:18px">
+              <div class="progress-bar bg-primary" style="width: {{ h.allocation_pct }}%">
+                {{ '%.1f'|format(h.allocation_pct) }}%
+              </div>
+            </div>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="text-muted small mt-2">Nguồn giá: CoinGecko · giá vốn theo phương pháp trung bình (average cost).</p>
+{% endif %}
 {% endblock %}
