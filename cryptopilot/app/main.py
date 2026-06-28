@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import auth, deps, market, portfolio
+from app.api import agent, auth, deps, market, portfolio
 from app.core.database import Base, engine, get_db
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -42,6 +42,7 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 app.include_router(auth.router)
 app.include_router(market.router)
 app.include_router(portfolio.router)
+app.include_router(agent.router)
 
 
 @app.exception_handler(StarletteHTTPException)

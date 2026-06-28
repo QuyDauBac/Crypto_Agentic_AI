@@ -8,6 +8,7 @@ Holdings KHÔNG có bảng riêng — tính từ transactions theo average-cost 
 Logic ở đây dùng chung cho cả UI (dashboard) lẫn AI Agent (Phase 4 tool get_portfolio_summary).
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.coin import Coin
 from app.models.transaction import Transaction
+from app.schemas.market import PriceSnapshot
 from app.schemas.transaction import (
     BtcBenchmark,
     DashboardView,
@@ -25,6 +27,24 @@ from app.schemas.transaction import (
 from app.services.market_service import MarketService
 
 _ZERO = Decimal("0")
+
+
+@dataclass
+class _HoldingViewsResult:
+    """Kết quả tính holding-views, dùng chung giữa dashboard và các tool Agent."""
+
+    views: list[HoldingView]
+    total_value: float
+    total_cost: float
+    total_pnl: float
+    total_pnl_pct: float | None
+    snapshot: PriceSnapshot | None
+
+
+def _alloc_percent(row: dict) -> float:
+    """Sort key cho allocation — trả float (percent có thể None)."""
+    p = row.get("percent")
+    return float(p) if isinstance(p, (int, float)) else 0.0
 
 
 class _HoldingAgg:
@@ -156,10 +176,13 @@ class PortfolioService:
 
         return [a for a in aggs.values() if a.net_quantity > 0]
 
-    # ────────────────────────── Dashboard (ghép giá real-time) ──────────────────────────
-    async def get_dashboard(
-        self, user_id: int, benchmark_days: int = 30
-    ) -> DashboardView:
+    # ────────────────────────── Holding-views (ghép giá real-time) ──────────────────────────
+    async def _holding_views(self, user_id: int) -> "_HoldingViewsResult":
+        """Tính danh sách HoldingView + các tổng, ghép giá real-time.
+
+        Dùng chung bởi get_dashboard (UI) và get_summary/get_allocation (AI Agent tools).
+        KHÔNG kèm BTC benchmark — benchmark chỉ thuộc dashboard.
+        """
         holdings = self.get_holdings(user_id)
         coin_ids = [h.coin.coingecko_id for h in holdings]
         snapshot = await self.market.get_prices(coin_ids) if coin_ids else None
@@ -217,18 +240,95 @@ class PortfolioService:
         total_pnl = total_value - total_cost
         total_pnl_pct = float(total_pnl / total_cost * 100) if total_cost > 0 else None
 
-        benchmark = await self._btc_benchmark(benchmark_days, total_pnl_pct)
-
-        return DashboardView(
-            holdings=views,
+        return _HoldingViewsResult(
+            views=views,
             total_value=float(total_value),
             total_cost=float(total_cost),
             total_pnl=float(total_pnl),
             total_pnl_pct=total_pnl_pct,
-            stale=snapshot.stale if snapshot else False,
-            as_of=snapshot.as_of if snapshot else datetime.now(timezone.utc),
+            snapshot=snapshot,
+        )
+
+    # ────────────────────────── Dashboard (UI) ──────────────────────────
+    async def get_dashboard(
+        self, user_id: int, benchmark_days: int = 30
+    ) -> DashboardView:
+        r = await self._holding_views(user_id)
+        benchmark = await self._btc_benchmark(benchmark_days, r.total_pnl_pct)
+        return DashboardView(
+            holdings=r.views,
+            total_value=r.total_value,
+            total_cost=r.total_cost,
+            total_pnl=r.total_pnl,
+            total_pnl_pct=r.total_pnl_pct,
+            stale=r.snapshot.stale if r.snapshot else False,
+            as_of=r.snapshot.as_of if r.snapshot else datetime.now(timezone.utc),
             benchmark=benchmark,
         )
+
+    # ────────────────────────── Tools cho AI Agent (Phase 4) ──────────────────────────
+    async def get_summary(self, user_id: int) -> dict:
+        """Tool get_portfolio_summary — holdings + tổng P&L, dạng dict gọn cho Gemini.
+
+        Không kèm benchmark. Mọi số là số thật từ transactions + giá CoinGecko (chống bịa).
+        """
+        r = await self._holding_views(user_id)
+        if not r.views:
+            return {
+                "holdings": [],
+                "total_value_usd": 0.0,
+                "total_cost_usd": 0.0,
+                "total_pnl_usd": 0.0,
+                "total_pnl_pct": None,
+                "note": "Danh mục trống — user chưa có giao dịch nào.",
+            }
+        return {
+            "holdings": [
+                {
+                    "symbol": v.symbol.upper(),
+                    "name": v.name,
+                    "coingecko_id": v.coingecko_id,
+                    "quantity": v.net_quantity,
+                    "avg_cost_usd": v.avg_cost_price,
+                    "current_price_usd": v.current_price,
+                    "current_value_usd": v.current_value,
+                    "unrealized_pnl_usd": v.unrealized_pnl,
+                    "pnl_pct": round(v.pnl_pct, 2) if v.pnl_pct is not None else None,
+                }
+                for v in r.views
+            ],
+            "total_value_usd": round(r.total_value, 2),
+            "total_cost_usd": round(r.total_cost, 2),
+            "total_pnl_usd": round(r.total_pnl, 2),
+            "total_pnl_pct": round(r.total_pnl_pct, 2)
+            if r.total_pnl_pct is not None
+            else None,
+            "stale": bool(r.snapshot.stale) if r.snapshot else False,
+        }
+
+    async def get_allocation(self, user_id: int) -> dict:
+        """Tool get_portfolio_allocation — tỷ trọng % từng coin (phát hiện tập trung rủi ro)."""
+        r = await self._holding_views(user_id)
+        rows = [
+            {
+                "symbol": v.symbol.upper(),
+                "coingecko_id": v.coingecko_id,
+                "percent": v.allocation_pct,
+            }
+            for v in r.views
+            if v.allocation_pct is not None
+        ]
+        rows.sort(key=_alloc_percent, reverse=True)
+        return {
+            "allocation": rows,
+            "total_value_usd": round(r.total_value, 2),
+            "note": (
+                "percent tính theo giá trị thị trường hiện tại; "
+                "coin nào > 50% là tập trung rủi ro cao."
+            )
+            if rows
+            else "Danh mục trống hoặc chưa lấy được giá.",
+        }
 
     async def _btc_benchmark(
         self, days: int, portfolio_return_pct: float | None
