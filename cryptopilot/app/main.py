@@ -17,8 +17,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import agent, auth, deps, market, portfolio
+from app.api import agent, alerts, auth, deps, market, portfolio
 from app.core.database import Base, engine, get_db
+from app.jobs.scheduler import shutdown_scheduler, start_scheduler
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
@@ -30,9 +31,9 @@ async def lifespan(app: FastAPI):
 
     Base.metadata.create_all(bind=engine)
 
-    # TODO (Phase 5): start APScheduler ở đây
+    start_scheduler()  # Phase 5: price_check / proactive_agent / refresh_coins
     yield
-    # TODO (Phase 5): scheduler.shutdown()
+    shutdown_scheduler()
 
 
 app = FastAPI(title="CryptoPilot", lifespan=lifespan)
@@ -43,6 +44,7 @@ app.include_router(auth.router)
 app.include_router(market.router)
 app.include_router(portfolio.router)
 app.include_router(agent.router)
+app.include_router(alerts.router)
 
 
 @app.exception_handler(StarletteHTTPException)

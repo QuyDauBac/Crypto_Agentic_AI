@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Cảnh báo giá — CryptoPilot{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">🔔 Cảnh báo giá</h3>
+  <a href="/notifications" class="btn btn-outline-secondary btn-sm">Hộp thông báo →</a>
+</div>
+
+{% if error %}
+<div class="alert alert-danger py-2">Dữ liệu không hợp lệ. Kiểm tra lại coin id và ngưỡng giá (&gt; 0).</div>
+{% endif %}
+
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <h6 class="card-title mb-3">Đặt cảnh báo mới</h6>
+    <form method="post" action="/alerts" class="row g-2 align-items-end">
+      <div class="col-md-4 position-relative">
+        <label class="form-label small mb-1">Coin</label>
+        <input type="text" id="alert-coin-search" class="form-control" autocomplete="off"
+               placeholder="Tìm coin (bitcoin, ethereum...)" required>
+        <div id="coin-results" class="list-group position-absolute w-100 shadow"
+             style="z-index:1000; max-height:240px; overflow:auto;"></div>
+        <input type="hidden" name="coingecko_id" id="coingecko_id" required>
+        <input type="hidden" name="symbol" id="symbol">
+        <input type="hidden" name="name" id="name">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small mb-1">Điều kiện</label>
+        <select name="condition" class="form-select">
+          <option value="above">Vượt lên trên ≥</option>
+          <option value="below">Rớt xuống dưới ≤</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small mb-1">Ngưỡng giá (USD)</label>
+        <input name="threshold_price" type="number" step="any" min="0" class="form-control" placeholder="65000" required>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary w-100" type="submit">Đặt cảnh báo</button>
+      </div>
+    </form>
+    <p class="text-muted small mt-2 mb-0">
+      Cảnh báo là <strong>một lần</strong>: khi giá chạm ngưỡng, hệ thống gửi thông báo rồi tự tắt.
+    </p>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h6 class="card-title mb-3">Cảnh báo của bạn</h6>
+    {% if alerts %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Coin</th><th>Điều kiện</th><th class="text-end">Ngưỡng</th>
+            <th>Trạng thái</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alerts %}
+          <tr>
+            <td><strong>{{ a.coin.symbol|upper }}</strong> <span class="text-muted small">{{ a.coin.coingecko_id }}</span></td>
+            <td>{{ 'Vượt lên trên ≥' if a.condition == 'above' else 'Rớt xuống dưới ≤' }}</td>
+            <td class="text-end">${{ '%.2f'|format(a.threshold_price) }}</td>
+            <td>
+              {% if a.is_active %}
+                <span class="badge bg-success">Đang theo dõi</span>
+              {% else %}
+                <span class="badge bg-secondary">Đã kích hoạt</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <form method="post" action="/alerts/{{ a.id }}/delete" class="d-inline m-0">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Xoá</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">Bạn chưa đặt cảnh báo nào.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  // Search coin (tái dùng /market/api/search), chọn → điền hidden fields → không gõ sai id.
+  const searchInput = document.getElementById("alert-coin-search");
+  const resultsBox = document.getElementById("coin-results");
+  let timer = null;
+
+  searchInput.addEventListener("input", () => {
+    clearTimeout(timer);
+    document.getElementById("coingecko_id").value = "";  // buộc chọn lại từ gợi ý
+    const q = searchInput.value.trim();
+    if (q.length < 2) { resultsBox.innerHTML = ""; return; }
+    timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/market/api/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) return;
+        const coins = await res.json();
+        resultsBox.innerHTML = coins.slice(0, 8).map(c =>
+          `<button type="button" class="list-group-item list-group-item-action"
+             data-id="${c.coingecko_id}" data-symbol="${c.symbol}" data-name="${c.name.replace(/"/g,'&quot;')}">
+             ${c.name} <span class="text-muted text-uppercase">${c.symbol}</span>
+           </button>`).join("");
+      } catch (e) { /* lỗi mạng: bỏ qua, không phá form */ }
+    }, 300);
+  });
+
+  resultsBox.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-id]");
+    if (!btn) return;
+    document.getElementById("coingecko_id").value = btn.dataset.id;
+    document.getElementById("symbol").value = btn.dataset.symbol;
+    document.getElementById("name").value = btn.dataset.name;
+    searchInput.value = `${btn.dataset.name} (${btn.dataset.symbol.toUpperCase()})`;
+    resultsBox.innerHTML = "";
+  });
+</script>
+{% endblock %}

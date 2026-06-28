@@ -10,5 +10,7 @@ from app.models.coin import Coin  # noqa: F401
 from app.models.transaction import Transaction  # noqa: F401
 from app.models.conversation import Conversation  # noqa: F401
 from app.models.message import Message  # noqa: F401
+from app.models.alert import Alert  # noqa: F401
+from app.models.notification import Notification  # noqa: F401
 
 __all__ = ["User"]

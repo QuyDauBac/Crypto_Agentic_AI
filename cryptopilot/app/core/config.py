@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     CRYPTOPANIC_BASE_URL: str = "https://cryptopanic.com/api/developer/v2"
     CRYPTOPANIC_TOKEN: str = ""
 
+    # ── Scheduler / Jobs (Phase 5) ──
+    ENABLE_SCHEDULER: bool = True  # tắt khi chạy test/dev nếu không muốn job nền
+    ALERT_CHECK_INTERVAL_MINUTES: int = 10
+    PROACTIVE_INTERVAL_HOURS: int = 6
+    REFRESH_COINS_INTERVAL_HOURS: int = 24
+
 
 # Singleton — import ở mọi nơi: `from app.core.config import settings`
 settings = Settings()

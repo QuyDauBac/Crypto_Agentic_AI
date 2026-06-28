@@ -19,6 +19,12 @@
           {% if user %}
             <li class="nav-item"><a class="nav-link" href="/portfolio">Danh mục</a></li>
             <li class="nav-item"><a class="nav-link" href="/agent">🤖 Trợ lý AI</a></li>
+            <li class="nav-item"><a class="nav-link" href="/alerts">Cảnh báo</a></li>
+            <li class="nav-item">
+              <a class="nav-link position-relative" href="/notifications">🔔 Thông báo
+                <span id="notif-badge" class="badge rounded-pill bg-danger d-none position-absolute top-0 start-100 translate-middle">0</span>
+              </a>
+            </li>
             <li class="nav-item">
               <form method="post" action="/logout" class="d-inline m-0">
                 <button class="btn btn-sm btn-outline-light ms-lg-2" type="submit">
@@ -44,5 +50,28 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  {% if user %}
+  <script>
+  (function () {
+    const badge = document.getElementById("notif-badge");
+    if (!badge) return;
+    async function refresh() {
+      try {
+        const res = await fetch("/notifications/unread-count");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.count > 0) {
+          badge.textContent = data.count > 99 ? "99+" : data.count;
+          badge.classList.remove("d-none");
+        } else {
+          badge.classList.add("d-none");
+        }
+      } catch (e) { /* im lặng — badge không phải tính năng cốt lõi */ }
+    }
+    refresh();
+    setInterval(refresh, 15000);  // poll mỗi 15s
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>
