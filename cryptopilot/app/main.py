@@ -17,8 +17,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import agent, alerts, auth, deps, market, portfolio
-from app.core.database import Base, engine, get_db
+from app.api import admin, agent, alerts, auth, deps, market, portfolio
+from app.core.database import Base, SessionLocal, engine, get_db
 from app.jobs.scheduler import shutdown_scheduler, start_scheduler
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,13 +45,34 @@ app.include_router(market.router)
 app.include_router(portfolio.router)
 app.include_router(agent.router)
 app.include_router(alerts.router)
+app.include_router(admin.router)
 
 
 @app.exception_handler(StarletteHTTPException)
 async def auth_redirect_handler(request: Request, exc: StarletteHTTPException):
-    """Route được bảo vệ ném 401 → đưa user về trang đăng nhập."""
+    """Map lỗi HTTP sang trang thân thiện cho UI server-rendered."""
     if exc.status_code == status.HTTP_401_UNAUTHORIZED:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+    if exc.status_code in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
+        db = SessionLocal()
+        try:
+            user = deps.get_current_user_optional(request, db)
+            return templates.TemplateResponse(
+                request,
+                "error.html",
+                {
+                    "user": user,
+                    "code": exc.status_code,
+                    "message": (
+                        "Bạn không có quyền truy cập trang này."
+                        if exc.status_code == status.HTTP_403_FORBIDDEN
+                        else "Không tìm thấy trang bạn yêu cầu."
+                    ),
+                },
+                status_code=exc.status_code,
+            )
+        finally:
+            db.close()
     return await http_exception_handler(request, exc)
 
 

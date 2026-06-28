@@ -26,6 +26,7 @@ from app.models.user import User
 from app.schemas.alert import AlertCreate
 from app.services.alert_service import AlertService
 from app.services.notification_service import NotificationService
+from app.services.settings_service import SettingsService
 
 router = APIRouter(tags=["alerts"])
 
@@ -48,10 +49,19 @@ def alerts_page(
     error: int | None = None,
     user: User = Depends(get_current_user),
     service: AlertService = Depends(get_alert_service),
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
     alerts = service.list_alerts(user.id)
+    default_threshold = SettingsService(db).get("alert.default_threshold_usd") or ""
     return templates.TemplateResponse(
-        request, "alerts/index.html", {"user": user, "alerts": alerts, "error": error}
+        request,
+        "alerts/index.html",
+        {
+            "user": user,
+            "alerts": alerts,
+            "error": error,
+            "default_threshold": default_threshold,
+        },
     )
 
 

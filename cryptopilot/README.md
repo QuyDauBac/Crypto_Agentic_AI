@@ -11,7 +11,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 ![Gemini](https://img.shields.io/badge/Google_Gemini-8E75B2?style=flat-square&logo=googlegemini&logoColor=white)
 ![Bootstrap](https://img.shields.io/badge/Bootstrap_5-7952B3?style=flat-square&logo=bootstrap&logoColor=white)
-![Status](https://img.shields.io/badge/status-in_development-yellow?style=flat-square)
+![Status](https://img.shields.io/badge/status-complete-success?style=flat-square)
 
 </div>
 
@@ -234,13 +234,44 @@ CRYPTOPANIC_BASE_URL=https://cryptopanic.com/api/developer/v2
 CRYPTOPANIC_TOKEN=your_token
 JWT_SECRET=your_random_secret
 JWT_EXPIRE_MINUTES=60
+
+# Scheduler / Jobs (Phase 5) — đều có default hợp lý, có thể bỏ qua
+ENABLE_SCHEDULER=true
+ALERT_CHECK_INTERVAL_MINUTES=10
+PROACTIVE_INTERVAL_HOURS=6
+REFRESH_COINS_INTERVAL_HOURS=24
 ```
+> Chỉ `GEMINI_API_KEY` là bắt buộc để Agent hoạt động. Thiếu `CRYPTOPANIC_TOKEN` thì phần
+> tin tức trả rỗng (graceful), các tính năng khác vẫn chạy.
 
 **4. Chạy**
 ```bash
 uvicorn app.main:app --reload
 ```
 > Mở http://127.0.0.1:8000 — đăng ký tài khoản, nhập vài giao dịch, rồi thử chat với Agent.
+
+**5. Cấp quyền admin** (để vào `/admin`)
+```bash
+# thay your@email.com bằng email tài khoản bạn vừa đăng ký
+python -c "from app.core.database import SessionLocal; from app.models.user import User; from sqlalchemy import select; db=SessionLocal(); u=db.execute(select(User).where(User.email=='your@email.com')).scalars().first(); u.is_admin=True; db.commit(); print('promoted', u.email)"
+```
+
+**6. Chạy test**
+```bash
+ruff check app tests && ruff format --check app tests && mypy app --ignore-missing-imports && pytest -q
+```
+
+### 🎬 Demo flow gợi ý
+1. **Đăng ký / đăng nhập** → vào **Danh mục**, thêm vài giao dịch (mua BTC, ETH...).
+2. **Trợ lý AI** (`/agent`): hỏi *"Danh mục tôi có rủi ro không?"* → xem Agent gọi tool
+   (`get_portfolio_allocation`...) ở mục "🔧 Agent đã gọi N tool" rồi tổng hợp — đây là vòng ReAct.
+3. **Cảnh báo** (`/alerts`): tìm coin qua ô search → đặt ngưỡng → chạy job
+   `python -c "import asyncio; from app.jobs.price_check import price_check; asyncio.run(price_check())"`
+   → **Thông báo** tự hiện (badge 🔔).
+4. **Proactive**: `python -c "import asyncio; from app.jobs.proactive_agent import proactive_agent; asyncio.run(proactive_agent())"`
+   → Agent tự tạo nhận định rủi ro mà user không cần hỏi.
+5. **Quản trị** (`/admin`, cần admin): xem thống kê hệ thống, quản lý user, chỉnh cấu hình
+   (ngưỡng cảnh báo mặc định, bật/tắt proactive).
 
 ---
 

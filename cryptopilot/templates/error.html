@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Lỗi {{ code }} — CryptoPilot{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+  <div class="display-1 fw-bold text-muted">{{ code }}</div>
+  <p class="lead">{{ message }}</p>
+  <a href="/" class="btn btn-primary mt-2">Về trang chủ</a>
+</div>
+{% endblock %}

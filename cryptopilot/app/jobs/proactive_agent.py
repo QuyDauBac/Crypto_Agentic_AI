@@ -18,6 +18,7 @@ from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
 from app.services.portfolio_service import PortfolioService
 from app.services.proactive_service import ProactiveAgentService
+from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,15 @@ logger = logging.getLogger(__name__)
 async def run_proactive_agent(
     proactive: ProactiveAgentService,
     notif_service: NotificationService,
+    enabled: bool = True,
 ) -> int:
-    """Lõi logic — trả số notification agent_insight đã tạo."""
+    """Lõi logic — trả số notification agent_insight đã tạo.
+
+    enabled=False (admin tắt ở /admin/settings) → bỏ qua, không tạo gì.
+    """
+    if not enabled:
+        logger.info("proactive_agent: bị tắt qua cấu hình → bỏ qua")
+        return 0
     users = proactive.users_with_holdings()
     created = 0
     for user in users:
@@ -62,7 +70,8 @@ async def proactive_agent() -> None:
             news_service=news,
             client=client,
         )
-        await run_proactive_agent(proactive, NotificationService(db))
+        enabled = SettingsService(db).get_bool("proactive.enabled", default=True)
+        await run_proactive_agent(proactive, NotificationService(db), enabled=enabled)
     except Exception as exc:  # noqa: BLE001
         logger.warning("proactive_agent lỗi: %s", exc)
     finally:

@@ -31,3 +31,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     return user
+
+
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    """Bắt buộc đăng nhập VÀ là admin. Không phải admin → 403 (handler hiển thị trang từ chối)."""
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return user
