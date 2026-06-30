@@ -5,7 +5,8 @@
 - Mount các router: auth, market, portfolio
 - Handler 401 → redirect /login (cho auth dạng cookie/server-rendered)
 """
-
+from app.adapters.coingecko_adapter import CoinGeckoAdapter
+from app.services.market_service import MarketService
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -76,10 +77,57 @@ async def auth_redirect_handler(request: Request, exc: StarletteHTTPException):
     return await http_exception_handler(request, exc)
 
 
+# Các coin hiển thị trên ticker Dynamic Island (symbol → hiển thị)
+_TICKER_SYMBOLS = ["btc", "eth", "sol", "bnb", "xrp", "ada", "doge", "avax"]
+
+
+def _format_price(value: float) -> str:
+    """Format giá USD cho ticker: $67,240 hoặc $0.62."""
+    if value >= 1:
+        return f"${value:,.0f}" if value >= 100 else f"${value:,.2f}"
+    return f"${value:.2f}"
+
+
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, db: Session = Depends(get_db)):
+async def index(request: Request, db: Session = Depends(get_db)):
     user = deps.get_current_user_optional(request, db)
-    return templates.TemplateResponse(request, "index.html", {"user": user})
+
+    # Lấy giá ticker cho Dynamic Island (có cache + fallback sẵn trong service)
+    market_prices: list[dict] = []
+    try:
+        service = MarketService(db=db, adapter=CoinGeckoAdapter())
+        # map symbol → coingecko_id (bỏ symbol nào DB chưa có)
+        sym_to_id = {}
+        for sym in _TICKER_SYMBOLS:
+            cid = service.resolve_symbol(sym)
+            if cid:
+                sym_to_id[sym] = cid
+
+        if sym_to_id:
+            snapshot = await service.get_prices(list(sym_to_id.values()))
+            # snapshot.prices: dict[coingecko_id, float]
+            # cần % thay đổi — service hiện chỉ trả giá, nên tạm để 0%
+            # (nâng cấp sau: dùng get_history hoặc CoinGecko market endpoint có 24h change)
+            for sym, cid in sym_to_id.items():
+                price = snapshot.prices.get(cid)
+                if price is not None:
+                    market_prices.append(
+                        {
+                            "sym": sym.upper(),
+                            "price": _format_price(price),
+                            "chg": "+0.0%",  # placeholder — xem ghi chú bên dưới
+                            "up": True,
+                        }
+                    )
+    except Exception:
+        # Ticker lỗi không được làm sập trang chủ — template có fallback JS riêng
+        market_prices = []
+
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"user": user, "market_prices": market_prices},
+    )
 
 
 @app.get("/health")
