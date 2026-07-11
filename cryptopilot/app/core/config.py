@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     PROACTIVE_INTERVAL_HOURS: int = 6
     REFRESH_COINS_INTERVAL_HOURS: int = 24
 
+    # ── OKX wallet integration (Phase 8) ──
+    ENCRYPTION_KEY: str = ""  # BẮT BUỘC đặt trong .env — tạo bằng Fernet.generate_key()
+    OKX_BASE_URL: str = "https://www.okx.com"
+
 
 # Singleton — import ở mọi nơi: `from app.core.config import settings`
 settings = Settings()

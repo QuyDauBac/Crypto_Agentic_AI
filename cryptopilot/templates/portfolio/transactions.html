@@ -1,18 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Giao dịch — CryptoPilot{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-4">
   <h3 class="mb-0">💱 Giao dịch</h3>
-  <a href="/portfolio" class="btn btn-outline-secondary btn-sm">← Về danh mục</a>
+  <a href="/portfolio" class="btn-cp-outline px-3 py-2 text-decoration-none">← Về danh mục</a>
 </div>
 
 {% if error %}
 <div class="alert alert-danger py-2">Dữ liệu không hợp lệ — kiểm tra lại số lượng, giá và coin.</div>
 {% endif %}
 
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-body">
-    <h6 class="card-title mb-3">{{ 'Sửa giao dịch #' ~ editing.id if editing else 'Thêm giao dịch' }}</h6>
+<div class="cp-card p-3 p-md-4 mb-4">
+  <h6 class="mb-3">{{ 'Sửa giao dịch #' ~ editing.id if editing else 'Thêm giao dịch' }}</h6>
     <form method="post"
           action="{{ '/portfolio/transactions/' ~ editing.id ~ '/edit' if editing else '/portfolio/transactions' }}">
       <div class="row g-2">
@@ -61,17 +60,16 @@
         </div>
       </div>
       <div class="mt-3">
-        <button type="submit" class="btn btn-primary">{{ 'Lưu thay đổi' if editing else 'Thêm' }}</button>
+        <button type="submit" class="btn-cp-pink border-0 px-4 py-2">{{ 'Lưu thay đổi' if editing else 'Thêm' }}</button>
         {% if editing %}<a href="/portfolio/transactions" class="btn btn-link">Hủy</a>{% endif %}
       </div>
     </form>
-  </div>
 </div>
 
-<div class="card border-0 shadow-sm">
+<div class="cp-card">
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
-      <thead class="table-light">
+      <thead>
         <tr>
           <th>Thời điểm</th><th>Coin</th><th>Loại</th>
           <th class="text-end">Số lượng</th><th class="text-end">Giá</th><th></th>
@@ -81,7 +79,7 @@
         {% for tx in txs %}
         <tr>
           <td class="small">{{ tx.executed_at.strftime('%d/%m/%Y %H:%M') }}</td>
-          <td><strong>{{ tx.coin.name }}</strong> <span class="text-muted text-uppercase small">{{ tx.coin.symbol }}</span></td>
+          <td><strong>{{ tx.coin.name }}</strong> <span class="cp-text-secondary text-uppercase small">{{ tx.coin.symbol }}</span></td>
           <td>
             <span class="badge {{ 'bg-success' if tx.type == 'buy' else 'bg-danger' }}">
               {{ 'Mua' if tx.type == 'buy' else 'Bán' }}
@@ -98,7 +96,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Chưa có giao dịch nào.</td></tr>
+        <tr><td colspan="6" class="text-center cp-text-secondary py-4">Chưa có giao dịch nào.</td></tr>
         {% endfor %}
       </tbody>
     </table>

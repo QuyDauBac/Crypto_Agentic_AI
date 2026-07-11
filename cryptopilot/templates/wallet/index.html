@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Ví OKX — CryptoPilot{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="mb-1">🔗 Kết nối ví OKX</h3>
+    <p class="cp-text-secondary small mb-0">Đồng bộ tự động giao dịch từ tài khoản OKX vào danh mục.</p>
+  </div>
+  <a href="/portfolio" class="btn-cp-outline px-3 py-2 text-decoration-none">← Về danh mục</a>
+</div>
+
+{% if error == 'connect' %}
+<div class="alert alert-danger py-2">
+  Không kết nối được — kiểm tra lại API Key/Secret/Passphrase, và đảm bảo đã bật quyền
+  <strong>Read</strong> cho key trên OKX.
+</div>
+{% elif error == 'sync' %}
+<div class="alert alert-danger py-2">Đồng bộ thất bại — OKX từ chối yêu cầu, thử lại sau.</div>
+{% elif error == 'not_connected' %}
+<div class="alert alert-warning py-2">Chưa kết nối ví — hãy kết nối trước khi đồng bộ.</div>
+{% endif %}
+
+{% if synced is not none %}
+<div class="alert alert-success py-2">
+  ✅ Đã đồng bộ xong — {{ synced }} giao dịch mới được thêm vào danh mục.
+</div>
+{% endif %}
+
+{% if status.is_connected %}
+<div class="cp-card p-3 p-md-4 mb-4">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <span class="badge bg-success mb-2">Đã kết nối</span>
+      <div class="cp-text-secondary small">
+        Lần đồng bộ gần nhất:
+        {% if status.last_synced_at %}
+          <strong>{{ status.last_synced_at.strftime('%d/%m/%Y %H:%M') }}</strong>
+        {% else %}
+          <span class="fst-italic">chưa đồng bộ lần nào</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <form method="post" action="/wallet/sync" class="m-0">
+        <button class="btn-cp-cyan border-0 px-4 py-2" type="submit">🔄 Đồng bộ ngay</button>
+      </form>
+      <form method="post" action="/wallet/disconnect" class="m-0"
+            onsubmit="return confirm('Ngắt kết nối ví OKX? Giao dịch đã đồng bộ trước đó vẫn được giữ lại.');">
+        <button class="btn btn-sm btn-outline-danger px-3" type="submit">Ngắt kết nối</button>
+      </form>
+    </div>
+  </div>
+</div>
+<p class="cp-text-secondary small">
+  Đồng bộ chỉ <strong>đọc</strong> lịch sử giao dịch SPOT từ OKX và thêm vào danh mục —
+  không thực hiện bất kỳ lệnh mua/bán nào thay bạn. API Key được mã hóa trước khi lưu và
+  không bao giờ hiển thị lại.
+</p>
+{% else %}
+<div class="cp-card p-3 p-md-4 mb-4">
+  <h6 class="mb-3">Nhập API Key OKX</h6>
+  <form method="post" action="/wallet/connect">
+    <div class="mb-3">
+      <label class="form-label">API Key</label>
+      <input type="text" name="api_key" class="form-control" autocomplete="off" required>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Secret Key</label>
+      <input type="password" name="api_secret" class="form-control" autocomplete="off" required>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Passphrase</label>
+      <input type="password" name="passphrase" class="form-control" autocomplete="off" required>
+    </div>
+    <button type="submit" class="btn-cp-pink border-0 px-4 py-2">Kết nối</button>
+  </form>
+</div>
+
+<div class="cp-card p-3 p-md-4">
+  <h6 class="mb-3">⚠️ Hướng dẫn tạo API Key an toàn</h6>
+  <ol class="cp-text-secondary small mb-0 ps-3">
+    <li>Vào OKX → <strong>Tài khoản → API</strong> → Tạo API Key mới</li>
+    <li>Chỉ tick quyền <strong>Read</strong> (Đọc) — <strong>KHÔNG</strong> tick Trade hoặc Withdraw</li>
+    <li>Bật <strong>IP Whitelist</strong> nếu OKX yêu cầu (chỉ cho phép IP server của bạn)</li>
+    <li>Copy API Key, Secret Key, Passphrase vào form bên trên</li>
+  </ol>
+</div>
+{% endif %}
+{% endblock %}

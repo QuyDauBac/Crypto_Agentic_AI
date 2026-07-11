@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Trang chủ — CryptoPilot{% endblock %}
+
+{% macro money(v) %}{% if v is none %}<span class="cp-text-muted">—</span>{% else %}${{ '%.2f'|format(v) }}{% endif %}{% endmacro %}
+{% macro pnl_pct(pct) %}
+  {% if pct is none %}<span class="cp-text-muted">—</span>
+  {% else %}<span class="{{ 'cp-text-success' if pct >= 0 else 'cp-text-danger' }}">{{ '+' if pct >= 0 else '' }}{{ '%.2f'|format(pct) }}%</span>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="mb-4">
+  <h2 class="mb-1">Chào {{ user.display_name or user.email }} 🚀</h2>
+  <p class="cp-text-secondary mb-0">Tổng quan danh mục và lối tắt tới mọi tính năng.</p>
+</div>
+
+{% if d.stale %}
+<div class="alert alert-warning py-2 mb-4">⚠️ Giá đang là <strong>dữ liệu cũ</strong> (CoinGecko tạm lỗi).</div>
+{% endif %}
+
+<!-- ===== METRIC SNAPSHOT ===== -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="cp-card p-3 h-100">
+      <div class="cp-text-secondary small mb-1">Tổng giá trị</div>
+      <div class="fs-4 fw-semibold">{{ money(d.total_value) }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="cp-card p-3 h-100">
+      <div class="cp-text-secondary small mb-1">Lãi / lỗ</div>
+      <div class="fs-4 fw-semibold">
+        {% if d.total_pnl is none %}<span class="cp-text-muted">—</span>
+        {% else %}<span class="{{ 'cp-text-success' if d.total_pnl >= 0 else 'cp-text-danger' }}">{{ '+' if d.total_pnl >= 0 else '' }}${{ '%.2f'|format(d.total_pnl) }}</span>
+        {% endif %}
+      </div>
+      <div class="small mt-1">{{ pnl_pct(d.total_pnl_pct) }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="cp-card p-3 h-100">
+      <div class="cp-text-secondary small mb-1">Coin đang giữ</div>
+      <div class="fs-4 fw-semibold">{{ d.holdings|length }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="cp-card p-3 h-100">
+      <div class="cp-text-secondary small mb-1">Thông báo mới</div>
+      <div class="fs-4 fw-semibold">{{ unread_count }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== QUICK ACCESS ===== -->
+<h6 class="cp-text-secondary text-uppercase small mb-2" style="letter-spacing:.08em;">Truy cập nhanh</h6>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-4 col-lg">
+    <a href="/portfolio/transactions" class="btn-cp-pink d-block text-center py-3 text-decoration-none">
+      💱 Danh mục
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg">
+    <a href="/agent" class="btn-cp-violet d-block text-center py-3 text-decoration-none">
+      🤖 Trợ lý AI
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg">
+    <a href="/alerts" class="btn-cp-cyan d-block text-center py-3 text-decoration-none">
+      🔔 Cảnh báo
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg">
+    <a href="/market" class="btn-cp-outline d-block text-center py-3 text-decoration-none">
+      🔍 Thị trường
+    </a>
+  </div>
+  <div class="col-6 col-md-4 col-lg">
+    <a href="/notifications" class="btn-cp-outline d-block text-center py-3 text-decoration-none">
+      📬 Thông báo
+      {% if unread_count > 0 %}<span class="badge rounded-pill bg-danger ms-1">{{ unread_count }}</span>{% endif %}
+    </a>
+  </div>
+  {% if user.is_admin %}
+  <div class="col-6 col-md-4 col-lg">
+    <a href="/admin" class="btn-cp-outline is-admin d-block text-center py-3 text-decoration-none">
+      🛠️ Quản trị
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-3">
+  <!-- ===== PORTFOLIO PREVIEW ===== -->
+  <div class="col-lg-7">
+    <div class="cp-card p-3 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">📊 Danh mục</h6>
+        <a href="/portfolio" class="small cp-text-secondary text-decoration-none">Xem đầy đủ →</a>
+      </div>
+      {% if not d.holdings %}
+      <div class="cp-empty py-4">
+        <div class="cp-empty-icon">💼</div>
+        <p class="mb-3">Danh mục của bạn đang trống.</p>
+        <a href="/portfolio/transactions" class="btn-cp-pink d-inline-block px-4 py-2 text-decoration-none">+ Thêm giao dịch đầu tiên</a>
+      </div>
+      {% else %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr><th>Coin</th><th class="text-end">Giá trị</th><th class="text-end">Lãi/lỗ</th></tr>
+          </thead>
+          <tbody>
+            {% for h in d.holdings[:5] %}
+            <tr>
+              <td>{{ h.symbol.upper() }} <span class="cp-text-secondary small">{{ h.name }}</span></td>
+              <td class="text-end">{{ money(h.current_value) }}</td>
+              <td class="text-end">
+                {% if h.unrealized_pnl is none %}<span class="cp-text-muted">—</span>
+                {% else %}<span class="{{ 'cp-text-success' if h.unrealized_pnl >= 0 else 'cp-text-danger' }}">{{ '+' if h.unrealized_pnl >= 0 else '' }}${{ '%.2f'|format(h.unrealized_pnl) }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if d.holdings|length > 5 %}
+      <p class="small cp-text-secondary mt-2 mb-0">+ {{ d.holdings|length - 5 }} coin khác — xem đầy đủ ở trang Danh mục.</p>
+      {% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ===== RECENT NOTIFICATIONS ===== -->
+  <div class="col-lg-5">
+    <div class="cp-card p-3 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">🔔 Thông báo gần đây</h6>
+        <a href="/notifications" class="small cp-text-secondary text-decoration-none">Xem tất cả →</a>
+      </div>
+      {% if not recent_notifications %}
+      <div class="cp-empty py-4">
+        <div class="cp-empty-icon">📭</div>
+        <p class="mb-0">Chưa có thông báo nào.</p>
+      </div>
+      {% else %}
+      <div class="list-group list-group-flush">
+        {% for n in recent_notifications %}
+        <div class="list-group-item px-0 {{ 'is-unread' if not n.is_read else '' }}">
+          <div class="d-flex gap-2">
+            <span>{{ '🤖' if n.type == 'agent_insight' else '🔔' }}</span>
+            <div class="flex-grow-1">
+              {% if n.title %}<div class="fw-semibold small">{{ n.title }}</div>{% endif %}
+              <div class="small cp-text-secondary">{{ n.message }}</div>
+              <div class="small cp-text-muted">{{ n.created_at.strftime('%d/%m %H:%M') }}</div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

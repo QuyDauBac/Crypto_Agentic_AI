@@ -16,6 +16,7 @@ pydantic-settings         # load .env vào Settings
 python-jose[cryptography] # tạo/verify JWT
 bcrypt                    # hash password (dùng trực tiếp, không qua passlib)
 email-validator           # EmailStr trong Pydantic schema
+cryptography              # Fernet — mã hóa credentials OKX (Phase 8)
 
 # ── External API ──
 httpx                     # gọi CoinGecko / CryptoPanic (async)

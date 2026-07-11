@@ -1,38 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Quản trị — CryptoPilot{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-4">
   <h3 class="mb-0">🛠️ Bảng quản trị</h3>
   <div class="d-flex gap-2">
-    <a href="/admin/users" class="btn btn-outline-primary btn-sm">Quản lý user</a>
-    <a href="/admin/settings" class="btn btn-outline-secondary btn-sm">Cấu hình</a>
+    <a href="/admin/users" class="btn-cp-outline px-3 py-2 text-decoration-none">Quản lý user</a>
+    <a href="/admin/settings" class="btn-cp-outline px-3 py-2 text-decoration-none">Cấu hình</a>
   </div>
 </div>
 
 <div class="row g-3">
   {% set cards = [
-    ('Tổng user', stats.total_users, 'primary'),
+    ('Tổng user', stats.total_users, 'violet'),
     ('Đang hoạt động', stats.active_users, 'success'),
-    ('Bị khóa', stats.locked_users, 'secondary'),
-    ('Giao dịch', stats.total_transactions, 'info'),
-    ('Cảnh báo (tổng)', stats.total_alerts, 'warning'),
-    ('Cảnh báo đang theo dõi', stats.active_alerts, 'warning'),
-    ('Thông báo', stats.total_notifications, 'info'),
-    ('Coin trong hệ thống', stats.total_coins, 'dark'),
+    ('Bị khóa', stats.locked_users, 'warning'),
+    ('Giao dịch', stats.total_transactions, 'cyan'),
+    ('Cảnh báo (tổng)', stats.total_alerts, 'pink'),
+    ('Cảnh báo đang theo dõi', stats.active_alerts, 'pink'),
+    ('Thông báo', stats.total_notifications, 'cyan'),
+    ('Coin trong hệ thống', stats.total_coins, 'muted'),
   ] %}
   {% for label, value, color in cards %}
   <div class="col-6 col-md-3">
-    <div class="card shadow-sm h-100 border-{{ color }}">
-      <div class="card-body text-center">
-        <div class="display-6 fw-bold text-{{ color }}">{{ value }}</div>
-        <div class="text-muted small">{{ label }}</div>
-      </div>
+    <div class="cp-card p-3 h-100 text-center">
+      <div class="cp-stat-value {{ color }}">{{ value }}</div>
+      <div class="cp-text-secondary small mt-1">{{ label }}</div>
     </div>
   </div>
   {% endfor %}
 </div>
 
-<p class="text-muted small mt-4 mb-0">
+<p class="cp-text-secondary small mt-4 mb-0">
   Số liệu tính trực tiếp từ database tại thời điểm tải trang.
 </p>
 {% endblock %}

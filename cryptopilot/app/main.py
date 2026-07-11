@@ -5,8 +5,11 @@
 - Mount các router: auth, market, portfolio
 - Handler 401 → redirect /login (cho auth dạng cookie/server-rendered)
 """
+
 from app.adapters.coingecko_adapter import CoinGeckoAdapter
 from app.services.market_service import MarketService
+from app.services.notification_service import NotificationService
+from app.services.portfolio_service import PortfolioService
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,7 +21,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.api import admin, agent, alerts, auth, deps, market, portfolio
+from app.api import admin, agent, alerts, auth, deps, market, portfolio, wallet
 from app.core.database import Base, SessionLocal, engine, get_db
 from app.jobs.scheduler import shutdown_scheduler, start_scheduler
 
@@ -47,6 +50,7 @@ app.include_router(portfolio.router)
 app.include_router(agent.router)
 app.include_router(alerts.router)
 app.include_router(admin.router)
+app.include_router(wallet.router)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -91,6 +95,28 @@ def _format_price(value: float) -> str:
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, db: Session = Depends(get_db)):
     user = deps.get_current_user_optional(request, db)
+
+    # User đã đăng nhập → home hub với số liệu thật (Phase 7: Home Hub).
+    # Khách chưa đăng nhập → giữ nguyên landing page marketing bên dưới.
+    if user is not None:
+        market = MarketService(db=db, adapter=CoinGeckoAdapter())
+        portfolio_service = PortfolioService(db=db, market_service=market)
+        notif_service = NotificationService(db=db)
+
+        dashboard = await portfolio_service.get_dashboard(user.id)
+        recent_notifications = notif_service.list_for_user(user.id, limit=5)
+        unread_count = notif_service.unread_count(user.id)
+
+        return templates.TemplateResponse(
+            request,
+            "home.html",
+            {
+                "user": user,
+                "d": dashboard,
+                "recent_notifications": recent_notifications,
+                "unread_count": unread_count,
+            },
+        )
 
     # Lấy giá ticker cho Dynamic Island (có cache + fallback sẵn trong service)
     market_prices: list[dict] = []

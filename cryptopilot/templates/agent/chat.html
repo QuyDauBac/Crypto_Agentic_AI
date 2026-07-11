@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Trợ lý AI — CryptoPilot{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-4">
   <h3 class="mb-0">🤖 Trợ lý phân tích danh mục</h3>
-  <a href="/portfolio" class="btn btn-outline-primary btn-sm">← Về danh mục</a>
+  <a href="/portfolio" class="btn-cp-outline px-3 py-2 text-decoration-none">← Về danh mục</a>
 </div>
 
 {% if not configured %}
@@ -13,24 +13,22 @@
 </div>
 {% endif %}
 
-<div class="card shadow-sm">
-  <div class="card-body">
-    <div id="chat-log" class="d-flex flex-column gap-2" style="min-height:320px;max-height:55vh;overflow-y:auto">
-      <div class="text-muted small">
-        Hỏi mình về danh mục của bạn, ví dụ:
-        <em>"Danh mục tôi có đang rủi ro không?"</em>,
-        <em>"Giá BTC bây giờ bao nhiêu?"</em>,
-        <em>"ETH 30 ngày qua thế nào?"</em>
-        <br><span class="text-secondary">Lưu ý: đây là phân tích, không phải lời khuyên đầu tư.</span>
-      </div>
+<div class="cp-card p-3 p-md-4">
+  <div id="chat-log" class="d-flex flex-column gap-3 px-1" style="min-height:320px;max-height:55vh;overflow-y:auto">
+    <div class="cp-text-secondary small">
+      Hỏi mình về danh mục của bạn, ví dụ:
+      <em>"Danh mục tôi có đang rủi ro không?"</em>,
+      <em>"Giá BTC bây giờ bao nhiêu?"</em>,
+      <em>"ETH 30 ngày qua thế nào?"</em>
+      <br><span class="cp-text-muted">Lưu ý: đây là phân tích, không phải lời khuyên đầu tư.</span>
     </div>
-
-    <form id="chat-form" class="mt-3 d-flex gap-2">
-      <input id="chat-input" type="text" class="form-control" autocomplete="off"
-             maxlength="2000" placeholder="Nhập câu hỏi về danh mục của bạn..." required>
-      <button id="chat-send" class="btn btn-primary" type="submit">Gửi</button>
-    </form>
   </div>
+
+  <form id="chat-form" class="mt-3 d-flex gap-2">
+    <input id="chat-input" type="text" class="form-control" autocomplete="off"
+           maxlength="2000" placeholder="Nhập câu hỏi về danh mục của bạn..." required>
+    <button id="chat-send" class="btn-cp-violet border-0 px-4" type="submit">Gửi</button>
+  </form>
 </div>
 
 <script>
@@ -54,13 +52,10 @@
     return d.innerHTML;
   }
 
-  function addBubble(role, text) {
+  function addBubble(role, text, thinking) {
     const wrap = el("div", "d-flex " + (role === "user" ? "justify-content-end" : "justify-content-start"));
-    const bubble = el(
-      "div",
-      "px-3 py-2 rounded-3 " + (role === "user" ? "bg-primary text-white" : "bg-light border"),
-      escapeHtml(text).replace(/\n/g, "<br>")
-    );
+    const bubbleCls = role === "user" ? "cp-bubble-user" : "cp-bubble-assistant" + (thinking ? " is-thinking" : "");
+    const bubble = el("div", "px-3 py-2 " + bubbleCls, text);
     bubble.style.maxWidth = "80%";
     wrap.appendChild(bubble);
     log.appendChild(wrap);
@@ -68,14 +63,18 @@
     return bubble;
   }
 
+  function thinkingDots() {
+    return '<span class="cp-dot"></span><span class="cp-dot"></span><span class="cp-dot"></span>';
+  }
+
   function addToolSteps(steps) {
     if (!steps || !steps.length) return;
-    const det = el("details", "small text-muted");
+    const det = el("details", "small cp-tool-steps");
     const sum = el("summary", "", "🔧 Agent đã gọi " + steps.length + " tool");
     det.appendChild(sum);
     steps.forEach(function (s) {
       const argStr = Object.keys(s.args || {}).length ? " (" + JSON.stringify(s.args) + ")" : "";
-      det.appendChild(el("div", "ms-3", (s.ok ? "✓ " : "✗ ") + escapeHtml(s.name) + escapeHtml(argStr)));
+      det.appendChild(el("div", "ms-3 cp-text-secondary", (s.ok ? "✓ " : "✗ ") + escapeHtml(s.name) + escapeHtml(argStr)));
     });
     log.appendChild(det);
     log.scrollTop = log.scrollHeight;
@@ -86,11 +85,11 @@
     const text = input.value.trim();
     if (!text) return;
 
-    addBubble("user", text);
+    addBubble("user", escapeHtml(text).replace(/\n/g, "<br>"));
     input.value = "";
     input.disabled = sendBtn.disabled = true;
 
-    const thinking = addBubble("assistant", "Đang suy nghĩ…");
+    const thinking = addBubble("assistant", thinkingDots(), true);
 
     try {
       const res = await fetch("/agent/chat", {
@@ -100,12 +99,14 @@
       });
       const data = await res.json();
       conversationId = data.conversation_id;
+      thinking.classList.remove("is-thinking");
       thinking.innerHTML = escapeHtml(data.reply).replace(/\n/g, "<br>");
-      if (data.degraded) thinking.classList.add("text-danger");
+      if (data.degraded) thinking.classList.add("cp-text-danger");
       addToolSteps(data.tool_steps);
     } catch (err) {
+      thinking.classList.remove("is-thinking");
       thinking.innerHTML = "Lỗi kết nối tới máy chủ. Thử lại sau nhé.";
-      thinking.classList.add("text-danger");
+      thinking.classList.add("cp-text-danger");
     } finally {
       input.disabled = sendBtn.disabled = false;
       input.focus();

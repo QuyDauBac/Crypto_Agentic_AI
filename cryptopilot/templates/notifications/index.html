@@ -1,49 +1,54 @@
 {% extends "base.html" %}
 {% block title %}Thông báo — CryptoPilot{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-4">
   <h3 class="mb-0">📬 Hộp thông báo</h3>
   <div class="d-flex gap-2">
-    <a href="/alerts" class="btn btn-outline-secondary btn-sm">← Cảnh báo giá</a>
+    <a href="/alerts" class="btn-cp-outline px-3 py-2 text-decoration-none">← Cảnh báo giá</a>
     {% if notifs %}
     <form method="post" action="/notifications/read-all" class="d-inline m-0">
-      <button class="btn btn-outline-primary btn-sm" type="submit">Đánh dấu đã đọc tất cả</button>
+      <button class="btn-cp-outline px-3 py-2" type="submit">Đánh dấu đã đọc tất cả</button>
     </form>
     {% endif %}
   </div>
 </div>
 
 {% if notifs %}
-<div class="list-group shadow-sm">
-  {% for n in notifs %}
-  <div class="list-group-item {{ '' if n.is_read else 'list-group-item-light border-start border-4 border-primary' }}">
-    <div class="d-flex justify-content-between align-items-start">
-      <div class="me-3">
-        <div class="mb-1">
-          {% if n.type == 'price_alert' %}
-            <span class="badge bg-warning text-dark">Cảnh báo giá</span>
-          {% else %}
-            <span class="badge bg-info text-dark">Nhận định AI</span>
-          {% endif %}
-          {% if n.title %}<strong class="ms-1">{{ n.title }}</strong>{% endif %}
-          {% if not n.is_read %}<span class="badge bg-primary ms-1">Mới</span>{% endif %}
+<div class="cp-card p-2">
+  <div class="list-group list-group-flush">
+    {% for n in notifs %}
+    <div class="list-group-item px-3 {{ 'is-unread' if not n.is_read else '' }}">
+      <div class="d-flex justify-content-between align-items-start gap-3">
+        <div class="me-3">
+          <div class="mb-1">
+            {% if n.type == 'price_alert' %}
+              <span class="badge bg-warning">Cảnh báo giá</span>
+            {% else %}
+              <span class="badge bg-info">Nhận định AI</span>
+            {% endif %}
+            {% if n.title %}<strong class="ms-1">{{ n.title }}</strong>{% endif %}
+            {% if not n.is_read %}<span class="badge bg-primary ms-1">Mới</span>{% endif %}
+          </div>
+          <div class="small cp-text-secondary">{{ n.message }}</div>
+          <div class="cp-text-muted small mt-1">{{ n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '' }}</div>
         </div>
-        <div class="small">{{ n.message }}</div>
-        <div class="text-muted small mt-1">{{ n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '' }}</div>
+        {% if not n.is_read %}
+        <form method="post" action="/notifications/{{ n.id }}/read" class="m-0 flex-shrink-0">
+          <button class="btn btn-sm btn-outline-secondary" type="submit">Đã đọc</button>
+        </form>
+        {% endif %}
       </div>
-      {% if not n.is_read %}
-      <form method="post" action="/notifications/{{ n.id }}/read" class="m-0">
-        <button class="btn btn-sm btn-outline-secondary" type="submit">Đã đọc</button>
-      </form>
-      {% endif %}
     </div>
+    {% endfor %}
   </div>
-  {% endfor %}
 </div>
 {% else %}
-<div class="card shadow-sm"><div class="card-body text-muted">
-  Chưa có thông báo nào. Khi giá chạm ngưỡng cảnh báo hoặc trợ lý có nhận định, bạn sẽ thấy ở đây.
-</div></div>
+<div class="cp-card">
+  <div class="cp-empty">
+    <div class="cp-empty-icon">📭</div>
+    <p class="mb-0">Chưa có thông báo nào. Khi giá chạm ngưỡng cảnh báo hoặc trợ lý có nhận định, bạn sẽ thấy ở đây.</p>
+  </div>
+</div>
 {% endif %}
 
 <script>
