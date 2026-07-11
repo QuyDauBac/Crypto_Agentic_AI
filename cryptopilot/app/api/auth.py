@@ -44,9 +44,21 @@ def register(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    confirm_password: str = Form(""),
     display_name: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    # giữ lại giá trị đã nhập để prefill khi render lại form vì lỗi
+    ctx = {"email": email, "display_name": display_name}
+
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            request,
+            "auth/register.html",
+            {**ctx, "error": "Mật khẩu xác nhận không khớp."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
     try:
         data = UserCreate(
             email=email, password=password, display_name=display_name or None
@@ -55,7 +67,7 @@ def register(
         return templates.TemplateResponse(
             request,
             "auth/register.html",
-            {"error": "Email không hợp lệ hoặc mật khẩu < 6 ký tự.", "email": email},
+            {**ctx, "error": "Email không hợp lệ hoặc mật khẩu < 6 ký tự."},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -63,7 +75,7 @@ def register(
         return templates.TemplateResponse(
             request,
             "auth/register.html",
-            {"error": "Email đã được đăng ký.", "email": email},
+            {**ctx, "error": "Email đã được đăng ký."},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 

@@ -56,7 +56,12 @@ def user_client():
     email = f"hub{next(_email_seq)}@example.com"
     res = client.post(
         "/register",
-        data={"email": email, "password": "secret123", "display_name": "Obi"},
+        data={
+            "email": email,
+            "password": "secret123",
+            "confirm_password": "secret123",
+            "display_name": "Obi",
+        },
     )
     assert "access_token" in res.cookies or res.history, "register phải đăng nhập luôn"
     return client

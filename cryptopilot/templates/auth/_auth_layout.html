@@ -1,0 +1,66 @@
+{#
+  Layout dùng chung cho login/register. Đứng độc lập (không extends base.html)
+  vì trang auth là màn hình full-screen aurora, không có navbar/footer của app.
+  Trang con override: block heading, sub, form, footer.
+#}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}CryptoPilot{% endblock %}</title>
+  <link href="{{ url_for('static', path='css/auth.css') }}" rel="stylesheet">
+</head>
+<body class="auth-body">
+
+  <div class="aurora-bg">
+    <canvas id="gradient-canvas"></canvas>
+    <div class="aurora-flow"></div>
+    <div class="aurora-flow-2"></div>
+  </div>
+
+  <div class="auth-stage">
+    <div class="auth-scroll">
+      <div class="auth-card">
+
+        <a class="auth-brand" href="/">
+          <span class="auth-brand-mark">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M4 15l5-6 4 4 7-8" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+          <span class="auth-brand-name">CryptoPilot</span>
+        </a>
+
+        <h1 class="auth-heading">{% block heading %}{% endblock %}</h1>
+        <p class="auth-sub">{% block sub %}{% endblock %}</p>
+
+        {% set is_login = request.url.path.startswith('/login') %}
+        <div class="auth-tabs" data-active="{{ 'login' if is_login else 'register' }}">
+          <span class="auth-pill"></span>
+          <a href="/login" class="auth-tab {{ 'is-active' if is_login else '' }}">Đăng nhập</a>
+          <a href="/register" class="auth-tab {{ 'is-active' if not is_login else '' }}">Đăng ký</a>
+        </div>
+
+        {% if error %}
+        <div class="auth-alert" role="alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"></circle>
+            <path d="M12 7.5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+            <circle cx="12" cy="16" r="1" fill="currentColor"></circle>
+          </svg>
+          <span>{{ error }}</span>
+        </div>
+        {% endif %}
+
+        {% block form %}{% endblock %}
+
+        <p class="auth-footer">{% block footer %}{% endblock %}</p>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', path='js/auth.js') }}"></script>
+</body>
+</html>

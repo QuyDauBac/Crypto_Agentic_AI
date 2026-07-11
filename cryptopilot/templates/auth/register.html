@@ -1,30 +1,69 @@
-{% extends "base.html" %}
+{% extends "auth/_auth_layout.html" %}
 {% block title %}Đăng ký — CryptoPilot{% endblock %}
-{% block content %}
-<div class="row justify-content-center">
-  <div class="col-md-5">
-    <div class="cp-card p-4">
-      <h4 class="mb-3">Tạo tài khoản</h4>
-      {% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
-      <form method="post" action="/register">
-        <div class="mb-3">
-          <label class="form-label">Email</label>
-          <input type="email" name="email" class="form-control" value="{{ email or '' }}" required autofocus>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Tên hiển thị <span class="cp-text-secondary small">(tùy chọn)</span></label>
-          <input type="text" name="display_name" class="form-control" maxlength="100">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Mật khẩu <span class="cp-text-secondary small">(≥ 6 ký tự)</span></label>
-          <input type="password" name="password" class="form-control" minlength="6" required>
-        </div>
-        <button type="submit" class="btn-cp-pink border-0 w-100 py-2">Đăng ký</button>
-      </form>
-      <p class="text-center cp-text-secondary mt-3 mb-0 small">
-        Đã có tài khoản? <a href="/login">Đăng nhập</a>
-      </p>
-    </div>
+{% block heading %}Tạo tài khoản{% endblock %}
+{% block sub %}Bắt đầu hành trình giao dịch thông minh cùng CryptoPilot.{% endblock %}
+
+{% block form %}
+<form method="post" action="/register" data-confirm-pw>
+
+  <label class="auth-label" for="email">Email</label>
+  <div class="auth-field">
+    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" stroke-width="1.7"></rect>
+      <path d="M4 7l8 6 8-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+    </svg>
+    <input type="email" id="email" name="email" value="{{ email or '' }}" placeholder="ban@email.com" autocomplete="email" required autofocus>
   </div>
-</div>
+
+  <label class="auth-label" for="display_name">Tên hiển thị <span class="auth-optional">(tùy chọn)</span></label>
+  <div class="auth-field">
+    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="1.7"></circle>
+      <path d="M5 20a7 7 0 0114 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+    </svg>
+    <input type="text" id="display_name" name="display_name" value="{{ display_name or '' }}" placeholder="Tên của bạn" autocomplete="nickname" maxlength="100">
+  </div>
+
+  <label class="auth-label" for="password">Mật khẩu <span class="auth-optional">(≥ 6 ký tự)</span></label>
+  <div class="auth-field">
+    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none">
+      <rect x="4" y="10" width="16" height="10" rx="2.5" stroke="currentColor" stroke-width="1.7"></rect>
+      <path d="M8 10V7a4 4 0 018 0v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+    </svg>
+    <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="new-password" minlength="6" required>
+    <button type="button" class="auth-eye" data-toggle-pw="password" aria-label="Hiện/ẩn mật khẩu">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="1.6"></path>
+        <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.6"></circle>
+      </svg>
+    </button>
+  </div>
+
+  <label class="auth-label" for="confirm_password">Xác nhận mật khẩu</label>
+  <div class="auth-field">
+    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none">
+      <rect x="4" y="10" width="16" height="10" rx="2.5" stroke="currentColor" stroke-width="1.7"></rect>
+      <path d="M8 10V7a4 4 0 018 0v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+    </svg>
+    <input type="password" id="confirm_password" name="confirm_password" placeholder="••••••••" autocomplete="new-password" minlength="6" required>
+    <button type="button" class="auth-eye" data-toggle-pw="confirm_password" aria-label="Hiện/ẩn mật khẩu">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="1.6"></path>
+        <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.6"></circle>
+      </svg>
+    </button>
+  </div>
+  <div class="auth-alert" id="pw-mismatch" role="alert" style="display:none;margin-top:14px;margin-bottom:0;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"></circle>
+      <path d="M12 7.5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+      <circle cx="12" cy="16" r="1" fill="currentColor"></circle>
+    </svg>
+    <span>Mật khẩu xác nhận không khớp.</span>
+  </div>
+
+  <button type="submit" class="auth-cta">Tạo tài khoản</button>
+</form>
 {% endblock %}
+
+{% block footer %}Đã có tài khoản? <a class="auth-footer-link" href="/login">Đăng nhập</a>{% endblock %}

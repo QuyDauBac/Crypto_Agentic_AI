@@ -40,7 +40,12 @@ def client():
 def test_register_sets_cookie_and_redirects(client):
     res = client.post(
         "/register",
-        data={"email": "a@example.com", "password": "secret123", "display_name": "An"},
+        data={
+            "email": "a@example.com",
+            "password": "secret123",
+            "confirm_password": "secret123",
+            "display_name": "An",
+        },
     )
     assert res.status_code == 303
     assert res.headers["location"] == "/portfolio"
@@ -54,7 +59,14 @@ def test_protected_requires_login(client):
 
 
 def test_login_then_access_protected(client):
-    client.post("/register", data={"email": "b@example.com", "password": "secret123"})
+    client.post(
+        "/register",
+        data={
+            "email": "b@example.com",
+            "password": "secret123",
+            "confirm_password": "secret123",
+        },
+    )
     # client mới (không cookie) → login lại
     fresh = TestClient(app, follow_redirects=False)
     res = fresh.post("/login", data={"email": "b@example.com", "password": "secret123"})
@@ -68,16 +80,35 @@ def test_login_then_access_protected(client):
 
 
 def test_login_wrong_password(client):
-    client.post("/register", data={"email": "c@example.com", "password": "secret123"})
+    client.post(
+        "/register",
+        data={
+            "email": "c@example.com",
+            "password": "secret123",
+            "confirm_password": "secret123",
+        },
+    )
     res = client.post("/login", data={"email": "c@example.com", "password": "WRONG"})
     assert res.status_code == 401
     assert "access_token" not in res.cookies
 
 
 def test_duplicate_email_rejected(client):
-    client.post("/register", data={"email": "d@example.com", "password": "secret123"})
+    client.post(
+        "/register",
+        data={
+            "email": "d@example.com",
+            "password": "secret123",
+            "confirm_password": "secret123",
+        },
+    )
     res = client.post(
-        "/register", data={"email": "d@example.com", "password": "secret123"}
+        "/register",
+        data={
+            "email": "d@example.com",
+            "password": "secret123",
+            "confirm_password": "secret123",
+        },
     )
     assert res.status_code == 400
     assert "đã được đăng ký" in res.text
