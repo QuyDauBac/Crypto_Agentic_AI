@@ -8,10 +8,12 @@ max_instances=1 (mặc định APScheduler) → job chạy lâu hơn chu kỳ c�
 """
 
 import logging
+from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.core.config import settings
+from app.jobs.portfolio_snapshot import portfolio_snapshot
 from app.jobs.price_check import price_check
 from app.jobs.proactive_agent import proactive_agent
 from app.jobs.refresh_coins import refresh_coins
@@ -49,12 +51,24 @@ def start_scheduler() -> None:
         id="refresh_coins",
         replace_existing=True,
     )
+    scheduler.add_job(
+        portfolio_snapshot,
+        "interval",
+        hours=settings.PORTFOLIO_SNAPSHOT_INTERVAL_HOURS,
+        id="portfolio_snapshot",
+        replace_existing=True,
+        # chạy ngay lúc đăng ký (không đợi hết chu kỳ 24h đầu) để có ít nhất 1 điểm
+        # dữ liệu ngay sau khi deploy, tránh chart trống hoàn toàn
+        next_run_time=datetime.now(),
+    )
     scheduler.start()
     logger.info(
-        "Scheduler chạy: price_check %dm, proactive %dh, refresh_coins %dh",
+        "Scheduler chạy: price_check %dm, proactive %dh, refresh_coins %dh, "
+        "portfolio_snapshot %dh",
         settings.ALERT_CHECK_INTERVAL_MINUTES,
         settings.PROACTIVE_INTERVAL_HOURS,
         settings.REFRESH_COINS_INTERVAL_HOURS,
+        settings.PORTFOLIO_SNAPSHOT_INTERVAL_HOURS,
     )
 
 

@@ -1,112 +1,266 @@
+{# templates/portfolio/dashboard.html — GET /portfolio
+   Context (see app/api/portfolio.py::dashboard): user, d (app.schemas.transaction.DashboardView)
+#}
 {% extends "base.html" %}
-{% block title %}Danh mục — CryptoPilot{% endblock %}
-{% macro money(v) %}{% if v is none %}<span class="text-muted">—</span>{% else %}${{ '%.2f'|format(v) }}{% endif %}{% endmacro %}
-{% macro pnl(v, pct) %}
-  {% if v is none %}<span class="text-muted">—</span>
-  {% else %}
-    <span class="{{ 'text-success' if v >= 0 else 'text-danger' }}">
-      {{ '+' if v >= 0 else '' }}${{ '%.2f'|format(v) }}{% if pct is not none %} ({{ '%.2f'|format(pct) }}%){% endif %}
-    </span>
-  {% endif %}
-{% endmacro %}
+
+{% block title %}Danh mục đầu tư — CryptoPilot{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/portfolio.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
-    <h3 class="mb-1">📊 Danh mục của bạn</h3>
-    <p class="cp-text-secondary small mb-0">Tổng quan holdings, lãi/lỗ và tỷ trọng phân bổ.</p>
-  </div>
-  <a href="/portfolio/transactions" class="btn-cp-pink px-4 py-2 text-decoration-none">Quản lý giao dịch</a>
-</div>
+<div class="cp-page">
 
-{% if d.stale %}
-<div class="alert alert-warning py-2">⚠️ Giá đang là <strong>dữ liệu cũ</strong> (CoinGecko tạm lỗi).</div>
-{% endif %}
-
-{% if not d.holdings %}
-<div class="cp-card">
-  <div class="cp-empty">
-    <div class="cp-empty-icon">💼</div>
-    <p class="mb-3">Chưa có giao dịch nào.</p>
-    <a href="/portfolio/transactions" class="btn-cp-pink d-inline-block px-4 py-2 text-decoration-none">+ Thêm giao dịch đầu tiên</a>
-  </div>
-</div>
-{% else %}
-
-<div class="row g-3 mb-4">
-  <div class="col-md-4">
-    <div class="cp-card p-3 h-100">
-      <div class="cp-text-secondary small mb-1">Tổng giá trị hiện tại</div>
-      <div class="fs-4 fw-semibold">{{ money(d.total_value) }}</div>
+  <div class="cp-header-row">
+    <div>
+      <div class="cp-breadcrumb">
+        <span>Danh mục</span><span style="opacity:.5">/</span>
+        <span class="cp-crumb-current">Tổng quan</span>
+      </div>
+      <h1 class="cp-page-title">Danh mục đầu tư</h1>
+    </div>
+    <div class="cp-tabs">
+      <a href="/portfolio" class="cp-tab is-active">Tổng quan</a>
+      <a href="/portfolio/transactions" class="cp-tab">Giao dịch</a>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="cp-card p-3 h-100">
-      <div class="cp-text-secondary small mb-1">Tổng giá vốn</div>
-      <div class="fs-4 fw-semibold">{{ money(d.total_cost) }}</div>
+
+  {% if d.stale %}
+  <div class="cp-alert-stale">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+      <path d="M12 8v5M12 16.5v.5" stroke="#f5b342" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="12" cy="12" r="9.2" stroke="#f5b342" stroke-width="1.6"/>
+    </svg>
+    <div class="cp-alert-text">
+      Giá đang dùng <b>dữ liệu cache</b>{% if d.as_of %} lúc {{ d.as_of.strftime('%H:%M') }}{% endif %}
+      — CoinGecko API tạm gián đoạn. Các con số bên dưới <b>không realtime</b>.
+    </div>
+    <button type="button" class="cp-alert-dismiss" data-action="dismiss-stale-banner">&times;</button>
+  </div>
+  {% endif %}
+
+  {% if d.holdings %}
+
+  {# ---------------- 3 summary cards ---------------- #}
+  <div class="cp-summary-grid">
+    <div class="cp-summary-card">
+      <div class="cp-summary-label">Tổng giá trị hiện tại</div>
+      <div class="cp-summary-value">{{ d.total_value|usd }}</div>
+      <div class="cp-summary-sub"><span>{{ d.holdings|length }}</span>&nbsp;tài sản đang nắm giữ</div>
+    </div>
+
+    <div class="cp-summary-card">
+      <div class="cp-summary-label">Tổng giá vốn</div>
+      <div class="cp-summary-value" style="color:rgba(255,255,255,.86)">{{ d.total_cost|usd }}</div>
+      <div class="cp-summary-sub">Vốn bình quân đã đầu tư</div>
+    </div>
+
+    {% set is_profit = d.total_pnl >= 0 %}
+    <div class="cp-summary-card cp-summary-card--pnl {{ 'is-positive' if is_profit else 'is-negative' }}">
+      <div class="cp-summary-glow"></div>
+      <div class="cp-summary-label" style="position:relative">Lãi/lỗ chưa thực hiện</div>
+      <div class="cp-summary-value" style="position:relative">{{ d.total_pnl|usd_signed }}</div>
+      <div class="cp-summary-sub" style="position:relative">
+        <span class="cp-pnl-chip">{{ '▲' if is_profit else '▼' }} {{ d.total_pnl_pct|pct }}</span>
+        <span style="font-size:12px;color:rgba(255,255,255,.4)">so với giá vốn</span>
+      </div>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="cp-card p-3 h-100">
-      <div class="cp-text-secondary small mb-1">Lãi/Lỗ chưa thực hiện</div>
-      <div class="fs-4 fw-semibold">{{ pnl(d.total_pnl, d.total_pnl_pct) }}</div>
-    </div>
-  </div>
-</div>
 
-{% if d.benchmark and d.benchmark.btc_change_pct is not none %}
-<div class="cp-card p-3 mb-4 d-flex justify-content-between small flex-wrap gap-2">
-  <span>📈 Hiệu suất danh mục:
-    <strong class="{{ 'cp-text-success' if (d.benchmark.portfolio_return_pct or 0) >= 0 else 'cp-text-danger' }}">
-      {{ '%.2f'|format(d.benchmark.portfolio_return_pct or 0) }}%
-    </strong>
-  </span>
-  <span class="cp-text-secondary">so với Bitcoin {{ d.benchmark.days }} ngày:
-    <strong class="{{ 'cp-text-success' if d.benchmark.btc_change_pct >= 0 else 'cp-text-danger' }}">
-      {{ '%.2f'|format(d.benchmark.btc_change_pct) }}%
-    </strong>
-    <span class="ms-1" title="So sánh thô — hiệu suất danh mục tính trên giá vốn, BTC tính trên cửa sổ N ngày, không cùng mốc thời gian">ⓘ</span>
-  </span>
-</div>
-{% endif %}
-
-<div class="cp-card">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
-      <thead>
-        <tr>
-          <th>Coin</th>
-          <th class="text-end">Số lượng</th>
-          <th class="text-end">Giá vốn TB</th>
-          <th class="text-end">Giá hiện tại</th>
-          <th class="text-end">Giá trị</th>
-          <th class="text-end">Lãi/Lỗ</th>
-          <th style="min-width:140px">Tỷ trọng</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for h in d.holdings %}
-        <tr>
-          <td><strong>{{ h.name }}</strong> <span class="badge bg-secondary text-uppercase">{{ h.symbol }}</span></td>
-          <td class="text-end">{{ '%.8f'|format(h.net_quantity) }}</td>
-          <td class="text-end">{{ money(h.avg_cost_price) }}</td>
-          <td class="text-end">{{ money(h.current_price) }}</td>
-          <td class="text-end">{{ money(h.current_value) }}</td>
-          <td class="text-end">{{ pnl(h.unrealized_pnl, h.pnl_pct) }}</td>
-          <td>
-            {% if h.allocation_pct is not none %}
-            <div class="progress" style="height:18px">
-              <div class="progress-bar bg-primary" style="width: {{ h.allocation_pct }}%">
-                {{ '%.1f'|format(h.allocation_pct) }}%
-              </div>
+  {# ---------------- BTC performance chart + allocation donut ---------------- #}
+  <div class="cp-split-grid">
+    <div class="cp-panel">
+      {% if default_timeframe %}
+      <div class="cp-chart-header">
+        <div>
+          <div class="cp-panel-title" style="margin-bottom:10px">Hiệu suất vs Bitcoin</div>
+          <div class="cp-chart-legend">
+            <div class="cp-legend-item">
+              <span class="cp-legend-swatch" style="background:#8b5cf6;box-shadow:0 0 8px rgba(139,92,246,.7)"></span>
+              <span class="cp-legend-label">Danh mục</span>
+              <span class="cp-legend-value" data-role="legend-portfolio">—</span>
             </div>
-            {% else %}<span class="cp-text-muted">—</span>{% endif %}
-          </td>
-        </tr>
+            <div class="cp-legend-item">
+              <span class="cp-legend-swatch" style="background:#22d3ee"></span>
+              <span class="cp-legend-label">BTC</span>
+              <span class="cp-legend-value" data-role="legend-btc">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="cp-tf-group">
+          {% for tf in ['7D', '30D', '90D', '1Y'] %}
+          {% set w = chart_data[tf] %}
+          {% if w.unlocked %}
+          <button type="button" class="cp-tf-btn {{ 'is-active' if tf == default_timeframe else '' }}" data-timeframe="{{ tf }}">{{ tf }}</button>
+          {% else %}
+          <button type="button" class="cp-tf-btn is-locked" disabled title="Còn {{ w.days_remaining }} ngày dữ liệu nữa để mở khung {{ tf }}">
+            {{ tf }}<span class="cp-tf-badge">{{ w.days_remaining }}d</span>
+          </button>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      <div class="cp-chart-canvas-wrap">
+        <canvas id="cp-perf-chart" data-default-timeframe="{{ default_timeframe }}"></canvas>
+      </div>
+      {% else %}
+      <div class="cp-panel-title" style="margin-bottom:14px">Hiệu suất vs Bitcoin</div>
+      <div class="cp-chart-empty">
+        <p>
+          Đang tích lũy dữ liệu lịch sử — quay lại sau
+          {% if chart_data['7D'].days_remaining %}{{ chart_data['7D'].days_remaining }} ngày{% else %}vài ngày{% endif %}
+          nữa để xem biểu đồ đầy đủ (khung 7D cần đủ 7 ngày dữ liệu liên tục).
+        </p>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="cp-panel">
+      <div class="cp-panel-title">Phân bổ danh mục</div>
+      <div class="cp-donut-wrap">
+        {% set ns = namespace(acc=0, stops=[]) %}
+        {% for h in d.holdings %}
+          {% if h.allocation_pct is not none %}
+          {% set start = ns.acc %}
+          {% set end = ns.acc + h.allocation_pct %}
+          {% set ns.stops = ns.stops + [coin_color(h.symbol) ~ ' ' ~ start ~ '% ' ~ end ~ '%'] %}
+          {% set ns.acc = end %}
+          {% endif %}
         {% endfor %}
-      </tbody>
-    </table>
+        <div class="cp-donut" style="background:conic-gradient({{ ns.stops|join(',') }})">
+          <div class="cp-donut-inner">
+            <span class="cp-donut-label">Tài sản</span>
+            <span class="cp-donut-count">{{ d.holdings|length }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="cp-alloc-list">
+        {% for h in d.holdings %}
+        <div class="cp-alloc-row">
+          <span class="cp-alloc-dot" style="background:{{ coin_color(h.symbol) }}"></span>
+          <span class="cp-alloc-sym">{{ h.symbol|upper }}</span>
+          <div class="cp-alloc-track"><div class="cp-alloc-fill" style="width:{{ h.allocation_pct or 0 }}%;background:{{ coin_color(h.symbol) }}"></div></div>
+          <span class="cp-alloc-pct">{{ (h.allocation_pct or 0)|pct }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
   </div>
+
+  {# ---------------- holdings table ---------------- #}
+  <div class="cp-card-block">
+    <div class="cp-card-block-head">
+      <div class="cp-panel-title" style="margin-bottom:0">Chi tiết nắm giữ</div>
+      <a href="/portfolio/transactions" class="cp-link-arrow">Xem giao dịch <span style="font-size:14px">→</span></a>
+    </div>
+
+    {# mobile card view (<640px) #}
+    <div class="cp-cards-mobile">
+      {% for h in d.holdings %}
+      {% set h_profit = (h.unrealized_pnl or 0) >= 0 %}
+      <div class="cp-mobile-card">
+        <div class="cp-mobile-card-head">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="cp-coin-avatar" style="width:34px;height:34px;background:{{ coin_color(h.symbol) }}">{{ h.symbol[0]|upper }}</span>
+            <div><div style="font-size:14px;font-weight:600">{{ h.name }}</div><div class="cp-coin-sym">{{ h.symbol|upper }}</div></div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--cp-mono-font);font-size:15px;font-weight:600">{{ h.current_value|usd }}</div>
+            <div style="font-family:var(--cp-mono-font);font-size:12px;font-weight:600;color:{{ '#34d399' if h_profit else '#f8698a' }}">{{ h.unrealized_pnl|usd_signed }} · {{ h.pnl_pct|pct }}</div>
+          </div>
+        </div>
+        <div class="cp-mobile-grid">
+          <div><div class="cp-mobile-label">Số lượng</div><div>{{ h.net_quantity|qty }}</div></div>
+          <div><div class="cp-mobile-label">Giá vốn TB</div><div>{{ h.avg_cost_price|usd }}</div></div>
+          <div><div class="cp-mobile-label">Giá hiện tại</div><div>{{ h.current_price|usd }}</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;margin-top:11px">
+          <span style="font-size:11px;color:rgba(255,255,255,.4);flex:none">Tỷ trọng</span>
+          <div class="cp-alloc-track" style="height:6px"><div class="cp-alloc-fill" style="width:{{ h.allocation_pct or 0 }}%;background:{{ coin_color(h.symbol) }}"></div></div>
+          <span style="font-family:var(--cp-mono-font);font-size:11.5px;color:rgba(255,255,255,.6)">{{ (h.allocation_pct or 0)|pct }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {# desktop table (>=640px) #}
+    <div class="cp-table-scroll">
+      <table class="cp-table">
+        <thead>
+          <tr>
+            <th>Coin</th>
+            <th>Số lượng</th>
+            <th>Giá vốn TB</th>
+            <th>Giá hiện tại</th>
+            <th>Giá trị</th>
+            <th>Lãi/lỗ</th>
+            <th style="text-align:left;padding-left:24px;width:150px">Tỷ trọng</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in d.holdings %}
+          {% set h_profit = (h.unrealized_pnl or 0) >= 0 %}
+          <tr>
+            <td>
+              <div class="cp-coin-cell">
+                <span class="cp-coin-avatar" style="background:{{ coin_color(h.symbol) }}">{{ h.symbol[0]|upper }}</span>
+                <div><div class="cp-coin-name">{{ h.name }}</div><div class="cp-coin-sym">{{ h.symbol|upper }}</div></div>
+              </div>
+            </td>
+            <td>{{ h.net_quantity|qty }}</td>
+            <td style="color:rgba(255,255,255,.62)">{{ h.avg_cost_price|usd }}</td>
+            <td>{{ h.current_price|usd }}</td>
+            <td style="font-weight:600">{{ h.current_value|usd }}</td>
+            <td>
+              <div style="font-weight:600;color:{{ '#34d399' if h_profit else '#f8698a' }}">{{ h.unrealized_pnl|usd_signed }}</div>
+              <div style="font-size:11px;opacity:.85;color:{{ '#34d399' if h_profit else '#f8698a' }}">{{ h.pnl_pct|pct }}</div>
+            </td>
+            <td class="cp-alloc-cell">
+              <div class="cp-alloc-track"><div class="cp-alloc-fill" style="width:{{ h.allocation_pct or 0 }}%;background:{{ coin_color(h.symbol) }}"></div></div>
+              <span class="cp-alloc-pct">{{ (h.allocation_pct or 0)|pct }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% else %}
+
+  {# ---------------- empty state ---------------- #}
+  <div class="cp-empty-state">
+    <div class="cp-empty-icon-wrap">
+      <div class="cp-empty-icon-glow"></div>
+      <div class="cp-empty-icon-ring">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none">
+          <path d="M3 20h18M6 20V10M11 20V5M16 20v-8M21 20V8" stroke="url(#cp-empty-grad)" stroke-width="2.2" stroke-linecap="round"/>
+          <defs>
+            <linearGradient id="cp-empty-grad" x1="3" y1="5" x2="21" y2="20">
+              <stop stop-color="#e935c1"/><stop offset=".5" stop-color="#8b5cf6"/><stop offset="1" stop-color="#22d3ee"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+    </div>
+    <h2 class="cp-empty-title">Danh mục của bạn còn trống</h2>
+    <p class="cp-empty-text">Thêm giao dịch mua đầu tiên để CryptoPilot bắt đầu tính toán giá vốn, lãi/lỗ và hiệu suất danh mục của bạn.</p>
+    <a href="/portfolio/transactions?action=add" class="cp-btn-aurora">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>
+      Nhập giao dịch đầu tiên
+    </a>
+  </div>
+
+  {% endif %}
+
 </div>
-<p class="cp-text-secondary small mt-2">Nguồn giá: CoinGecko · giá vốn theo phương pháp trung bình (average cost).</p>
-{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script>
+    window.CP_CHART_DATA = {{ chart_data | tojson }};
+  </script>
+  <script src="{{ url_for('static', path='js/portfolio.js') }}"></script>
 {% endblock %}

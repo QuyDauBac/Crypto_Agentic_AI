@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     ALERT_CHECK_INTERVAL_MINUTES: int = 10
     PROACTIVE_INTERVAL_HOURS: int = 6
     REFRESH_COINS_INTERVAL_HOURS: int = 24
+    PORTFOLIO_SNAPSHOT_INTERVAL_HOURS: int = 24
 
     # ── OKX wallet integration (Phase 8) ──
     ENCRYPTION_KEY: str = ""  # BẮT BUỘC đặt trong .env — tạo bằng Fernet.generate_key()

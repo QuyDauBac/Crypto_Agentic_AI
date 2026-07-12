@@ -315,6 +315,13 @@ ruff check app tests && ruff format --check app tests && mypy app --ignore-missi
    (quyền Đọc) → **Kết nối** → **Đồng bộ** → giao dịch từ sàn tự xuất hiện trong Danh mục.
 6. **Quản trị** (`/admin`, cần admin): xem thống kê hệ thống, quản lý user, chỉnh cấu hình
    (ngưỡng cảnh báo mặc định, bật/tắt proactive).
+7. **Biểu đồ hiệu suất** (`/portfolio`, panel "Hiệu suất vs Bitcoin"): mỗi khung 7D/30D/
+   90D/1Y chỉ mở khóa khi đã có đủ số ngày `portfolio_snapshots` thật liên tục (job
+   `portfolio_snapshot` chạy 1 lần/ngày). Để demo nhanh không cần đợi hàng tháng:
+   `python -m app.dev_tools.seed_portfolio_history --email you@example.com --days 365`
+   ⚠️ Script demo-only (`app/dev_tools/`, không phải job production, không tự chạy) —
+   không ghi đè dữ liệu thật. Xoá các dòng giả trước khi nộp báo cáo nếu cần
+   `portfolio_snapshots` sạch 100% dữ liệu thật.
 
 ---
 

@@ -3,10 +3,12 @@
 - run_price_check: kích hoạt khi giá chạm ngưỡng → tạo notification + tắt alert; idempotent
 - run_proactive_agent: tạo agent_insight khi có nhận định; bỏ qua khi NONE / danh mục rỗng
 - run_refresh_coins: trả số coin đồng bộ
+- run_portfolio_snapshot (Phase 9): lưu snapshot user có holdings; skip user rỗng/lỗi giá,
+  không chặn user khác; upsert idempotent trong cùng ngày
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import create_engine
@@ -16,14 +18,18 @@ from sqlalchemy.pool import StaticPool
 import pytest
 
 from app.core.database import Base
+from app.jobs.portfolio_snapshot import run_portfolio_snapshot
 from app.jobs.price_check import run_price_check
 from app.jobs.proactive_agent import run_proactive_agent
 from app.jobs.refresh_coins import run_refresh_coins
+from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.user import User
 from app.schemas.alert import AlertCreate
 from app.schemas.market import PriceSnapshot
+from app.schemas.transaction import TransactionCreate
 from app.services.alert_service import AlertService
 from app.services.notification_service import NotificationService
+from app.services.portfolio_service import PortfolioService
 from app.services.proactive_service import ProactiveAgentService
 
 
@@ -218,3 +224,74 @@ def test_insight_none_when_not_configured(db):
         db, FakePortfolio(), FakeNews(), FakeClient("x", configured=False)
     )
     assert asyncio.run(svc.insight_for_user(user)) is None
+
+
+# ────────────────────────────── portfolio_snapshot (Phase 9) ──────────────────────────────
+def _snap_tx(coingecko_id, qty, price):
+    return TransactionCreate(
+        coingecko_id=coingecko_id,
+        symbol=coingecko_id[:3],
+        name=coingecko_id,
+        type="buy",
+        quantity=Decimal(str(qty)),
+        price=Decimal(str(price)),
+        executed_at=datetime(2026, 1, 1),
+    )
+
+
+def test_portfolio_snapshot_saves_for_user_with_holdings(db):
+    user = db.get(User, 1)
+    portfolio = PortfolioService(db, FakeMarket(prices={"bitcoin": 200.0}))
+    portfolio.add_transaction(1, _snap_tx("bitcoin", 1, 100))
+
+    n = asyncio.run(run_portfolio_snapshot([user], portfolio, today=date(2026, 6, 1)))
+    assert n == 1
+    row = db.query(PortfolioSnapshot).filter_by(user_id=1).one()
+    assert row.total_value == Decimal("200.0")
+    assert row.snapshot_date == date(2026, 6, 1)
+
+
+def test_portfolio_snapshot_skips_user_without_holdings(db):
+    user = db.get(User, 1)
+    portfolio = PortfolioService(db, FakeMarket())
+    n = asyncio.run(run_portfolio_snapshot([user], portfolio, today=date(2026, 6, 1)))
+    assert n == 0
+    assert db.query(PortfolioSnapshot).count() == 0
+
+
+def test_portfolio_snapshot_skips_user_on_price_failure_without_blocking_others(db):
+    db.add(User(id=2, email="b@test.com", hashed_password="x"))
+    db.commit()
+    user1, user2 = db.get(User, 1), db.get(User, 2)
+
+    setup = PortfolioService(db, FakeMarket())
+    setup.add_transaction(1, _snap_tx("bitcoin", 1, 100))  # user 1: giá bitcoin sẽ lỗi
+    setup.add_transaction(
+        2, _snap_tx("ethereum", 1, 40)
+    )  # user 2: giá lấy được bình thường
+
+    # Market chỉ có giá ethereum — mô phỏng CoinGecko lỗi hoàn toàn cho bitcoin (không
+    # có fallback cache), current_price None cho toàn bộ holdings của user 1.
+    portfolio = PortfolioService(db, FakeMarket(prices={"ethereum": 50.0}))
+
+    n = asyncio.run(
+        run_portfolio_snapshot([user1, user2], portfolio, today=date(2026, 6, 1))
+    )
+    assert n == 1
+    saved_user_ids = {r.user_id for r in db.query(PortfolioSnapshot).all()}
+    assert saved_user_ids == {2}
+
+
+def test_portfolio_snapshot_idempotent_same_day(db):
+    user = db.get(User, 1)
+    portfolio = PortfolioService(db, FakeMarket(prices={"bitcoin": 200.0}))
+    portfolio.add_transaction(1, _snap_tx("bitcoin", 1, 100))
+
+    today = date(2026, 6, 1)
+    asyncio.run(run_portfolio_snapshot([user], portfolio, today=today))
+    asyncio.run(
+        run_portfolio_snapshot([user], portfolio, today=today)
+    )  # job chạy lại trong ngày
+
+    rows = db.query(PortfolioSnapshot).filter_by(user_id=1, snapshot_date=today).all()
+    assert len(rows) == 1

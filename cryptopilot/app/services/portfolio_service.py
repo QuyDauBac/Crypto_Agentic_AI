@@ -9,13 +9,14 @@ Logic ở đây dùng chung cho cả UI (dashboard) lẫn AI Agent (Phase 4 tool
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.coin import Coin
+from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.transaction import Transaction
 from app.schemas.market import PriceSnapshot
 from app.schemas.transaction import (
@@ -265,6 +266,65 @@ class PortfolioService:
             as_of=r.snapshot.as_of if r.snapshot else datetime.now(timezone.utc),
             benchmark=benchmark,
         )
+
+    # ────────────────────────── Snapshot lịch sử (Phase 9 chart) ──────────────────────────
+    async def get_current_value(self, user_id: int) -> tuple[float, float] | None:
+        """Tổng giá trị + giá vốn hiện tại — wrapper public quanh _holding_views().
+
+        Dùng bởi job snapshot hằng ngày (app/jobs/portfolio_snapshot.py). Trả None khi
+        user chưa có holdings (không cần lưu snapshot rỗng), hoặc khi CoinGecko lỗi
+        hoàn toàn cho user này (không lấy được giá cho BẤT KỲ holding nào, kể cả giá
+        cache dự phòng) — job sẽ bỏ qua thay vì lưu total_value sai (bằng 0/thiếu).
+        """
+        r = await self._holding_views(user_id)
+        if not r.views:
+            return None
+        if all(v.current_price is None for v in r.views):
+            return None
+        return r.total_value, r.total_cost
+
+    def get_value_history(self, user_id: int, days: int) -> list[tuple[date, float]]:
+        """Đọc portfolio_snapshots N ngày gần nhất, sắp xếp tăng dần theo ngày."""
+        cutoff = date.today() - timedelta(days=days)
+        rows = self.db.execute(
+            select(PortfolioSnapshot)
+            .where(
+                PortfolioSnapshot.user_id == user_id,
+                PortfolioSnapshot.snapshot_date >= cutoff,
+            )
+            .order_by(PortfolioSnapshot.snapshot_date.asc())
+        ).scalars()
+        return [(r.snapshot_date, float(r.total_value)) for r in rows]
+
+    def save_snapshot(
+        self, user_id: int, snapshot_date: date, total_value: float, total_cost: float
+    ) -> None:
+        """Upsert snapshot hôm nay — check-exists-trước-khi-insert (SQLite, không cần
+        ON CONFLICT phức tạp; job chạy tối đa vài lần/ngày nên không lo race nghiêm trọng).
+        """
+        existing = (
+            self.db.execute(
+                select(PortfolioSnapshot).where(
+                    PortfolioSnapshot.user_id == user_id,
+                    PortfolioSnapshot.snapshot_date == snapshot_date,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if existing is not None:
+            existing.total_value = Decimal(str(total_value))
+            existing.total_cost = Decimal(str(total_cost))
+        else:
+            self.db.add(
+                PortfolioSnapshot(
+                    user_id=user_id,
+                    snapshot_date=snapshot_date,
+                    total_value=Decimal(str(total_value)),
+                    total_cost=Decimal(str(total_cost)),
+                )
+            )
+        self.db.commit()
 
     # ────────────────────────── Tools cho AI Agent (Phase 4) ──────────────────────────
     async def get_summary(self, user_id: int) -> dict:

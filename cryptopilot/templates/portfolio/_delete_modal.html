@@ -1,0 +1,21 @@
+{# templates/portfolio/_delete_modal.html — included only by transactions.html
+   Hidden by default; portfolio.js opens it and fills in the description + form
+   action per the clicked row. Delete route: POST /portfolio/transactions/{id}/delete
+#}
+<div id="cp-delete-modal">
+  <div class="cp-modal-backdrop"></div>
+  <div class="cp-modal">
+    <div class="cp-modal-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12" stroke="#f8698a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h3>Xóa giao dịch này?</h3>
+    <p>Giao dịch <b data-role="delete-desc"></b> sẽ bị xóa vĩnh viễn. Danh mục và giá vốn trung bình sẽ được tính lại. Hành động này không thể hoàn tác.</p>
+
+    <form method="post" data-delete-url-base="/portfolio/transactions/">
+      <div class="cp-modal-actions">
+        <button type="button" class="cp-btn-secondary" style="flex:1" data-action="cancel-delete">Giữ lại</button>
+        <button type="submit" class="cp-btn-danger">Xóa giao dịch</button>
+      </div>
+    </form>
+  </div>
+</div>

@@ -1,0 +1,98 @@
+{# templates/portfolio/_tx_panel.html — included only by transactions.html
+   Optional context: editing (Transaction|None) — when set, panel opens pre-filled
+   on page load (server round-trip from "Sửa" link ?edit=ID) in addition to the
+   client-side open triggered by portfolio.js on row-button clicks.
+#}
+<div id="cp-tx-panel"
+     class="{{ 'is-open' if editing else '' }}"
+     data-open-on-load="{{ 'true' if editing else 'false' }}"
+     data-editing-id="{{ editing.id if editing else '' }}">
+  <div class="cp-panel-backdrop"></div>
+  <div class="cp-panel-slide">
+    <div class="cp-panel-head">
+      <div>
+        <div class="cp-panel-head-title">{{ 'Sửa giao dịch' if editing else 'Thêm giao dịch' }}</div>
+        <div class="cp-panel-head-sub">Nhập nhanh — các con số sẽ tự tính lại danh mục</div>
+      </div>
+      <button type="button" class="cp-panel-close" data-action="close-panel">&times;</button>
+    </div>
+
+    <form id="cp-tx-form" method="post"
+          action="{{ ('/portfolio/transactions/' ~ editing.id ~ '/edit') if editing else '/portfolio/transactions' }}"
+          data-create-url="/portfolio/transactions"
+          data-update-url-base="/portfolio/transactions/">
+
+      <div class="cp-panel-body">
+
+        <input type="hidden" name="type" value="{{ editing.type if editing else 'buy' }}">
+        <input type="hidden" name="coingecko_id" value="{{ editing.coin.coingecko_id if editing else '' }}">
+        <input type="hidden" name="symbol" value="{{ editing.coin.symbol if editing else '' }}">
+        <input type="hidden" name="name" value="{{ editing.coin.name if editing else '' }}">
+
+        <div class="cp-buysell-grid">
+          <button type="button" class="cp-buysell-btn buy {{ 'is-active' if not editing or editing.type == 'buy' else '' }}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Mua
+          </button>
+          <button type="button" class="cp-buysell-btn sell {{ 'is-active' if editing and editing.type == 'sell' else '' }}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Bán
+          </button>
+        </div>
+
+        <div class="cp-field">
+          <label>Coin</label>
+          <div style="position:relative">
+            <input id="cp-coin-query" type="text" class="cp-input cp-coin-search-input" autocomplete="off"
+                   placeholder="Gõ tên hoặc mã (VD: BTC, Sol...)"
+                   value="{{ (editing.coin.name ~ ' (' ~ editing.coin.symbol|upper ~ ')') if editing else '' }}">
+            <span class="cp-coin-search-avatar" style="{{ 'background:' ~ coin_color(editing.coin.symbol) if editing else '' }}">{{ editing.coin.symbol[0]|upper if editing else '?' }}</span>
+          </div>
+          <div class="cp-coin-dropdown"></div>
+        </div>
+
+        <div class="cp-field">
+          <label>Thời điểm giao dịch</label>
+          <input type="datetime-local" name="executed_at" class="cp-input" style="color-scheme:dark"
+                 value="{{ editing.executed_at.strftime('%Y-%m-%dT%H:%M') if editing else '' }}">
+        </div>
+
+        <div class="cp-field-row">
+          <div class="cp-field" style="margin-bottom:0">
+            <label>Số lượng</label>
+            <input type="text" inputmode="decimal" name="quantity" class="cp-input cp-input-mono" placeholder="0.00"
+                   value="{{ editing.quantity if editing else '' }}">
+            <div class="cp-error-text" style="display:none">Số lượng phải lớn hơn 0</div>
+          </div>
+          <div class="cp-field" style="margin-bottom:0">
+            <label>Giá (USD)</label>
+            <input type="text" inputmode="decimal" name="price" class="cp-input cp-input-mono" placeholder="0.00"
+                   value="{{ editing.price if editing else '' }}">
+            <div class="cp-error-text" style="display:none">Giá phải lớn hơn 0</div>
+          </div>
+        </div>
+
+        <div class="cp-field">
+          <label>Phí giao dịch <span class="cp-optional">· tùy chọn</span></label>
+          <input type="text" inputmode="decimal" name="fee" class="cp-input cp-input-mono" placeholder="0.00"
+                 value="{{ editing.fee if editing and editing.fee is not none else '' }}">
+        </div>
+
+        <div class="cp-field" style="margin-bottom:6px">
+          <label>Ghi chú <span class="cp-optional">· tùy chọn</span></label>
+          <textarea name="note" class="cp-input" rows="2" placeholder="VD: DCA hàng tuần">{{ editing.note or '' if editing else '' }}</textarea>
+        </div>
+
+        <div class="cp-estimate-row">
+          <span class="cp-estimate-label">Tổng giá trị <span data-role="estimate-word">phải trả</span></span>
+          <span class="cp-estimate-value">—</span>
+        </div>
+      </div>
+
+      <div class="cp-panel-footer">
+        <button type="button" class="cp-btn-secondary" data-action="close-panel">Hủy</button>
+        <button type="submit" class="cp-btn-aurora cp-btn-submit">{{ 'Lưu thay đổi' if editing else 'Thêm giao dịch' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
