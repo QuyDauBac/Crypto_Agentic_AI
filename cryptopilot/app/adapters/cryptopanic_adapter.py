@@ -1,4 +1,9 @@
-"""CryptoPanic adapter — nguồn tin tức crypto cho tool get_crypto_news (Phase 4).
+"""CryptoPanic adapter — nguồn tin tức CŨ, KHÔNG còn được inject từ 07/2026.
+
+⚠️ CryptoPanic ngừng free tier từ 04/2026 — file này giữ lại phòng trường hợp quay lại
+dùng bản trả phí; nguồn hiện tại là CoinTelegraph RSS (cointelegraph_adapter.py).
+Lưu ý nếu kích hoạt lại: NewsService giờ truyền TÊN coin ("Bitcoin") qua `currencies`
+theo NewsDataInterface, còn CryptoPanic cần SYMBOL (BTC) — phải map lại trước khi gọi.
 
 CryptoPanic Developer API v2: GET {base}/posts/?auth_token=...&currencies=BTC,ETH
 Bọc qua adapter để cô lập shape API ngoài khỏi phần còn lại của app (giống CoinGecko).
@@ -10,12 +15,13 @@ import logging
 
 import httpx
 
+from app.adapters.news_data import NewsDataInterface
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-class CryptoPanicAdapter:
+class CryptoPanicAdapter(NewsDataInterface):
     def __init__(
         self,
         base_url: str | None = None,
@@ -26,6 +32,10 @@ class CryptoPanicAdapter:
         self.base_url = (base_url or settings.CRYPTOPANIC_BASE_URL).rstrip("/")
         self.token = token if token is not None else settings.CRYPTOPANIC_TOKEN
         self._transport = transport
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.token)
 
     async def get_posts(
         self, currencies: list[str] | None = None, limit: int = 5

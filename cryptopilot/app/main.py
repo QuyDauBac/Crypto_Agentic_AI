@@ -6,12 +6,15 @@
 - Handler 401 → redirect /login (cho auth dạng cookie/server-rendered)
 """
 
+import logging
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 from app.adapters.coingecko_adapter import CoinGeckoAdapter
 from app.services.market_service import MarketService
 from app.services.notification_service import NotificationService
 from app.services.portfolio_service import PortfolioService
-from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.exception_handlers import http_exception_handler
@@ -24,6 +27,25 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api import admin, agent, alerts, auth, deps, market, portfolio, wallet
 from app.core.database import Base, SessionLocal, engine, get_db
 from app.jobs.scheduler import shutdown_scheduler, start_scheduler
+
+# Chỉ áp dụng khi chạy app thật (uvicorn/python -m), KHÔNG khi pytest import module này
+# (test_smoke.py, test_auth.py, test_home.py đều `from app.main import app`) — tránh đổi
+# hành vi capture log/stdout của pytest.
+if "pytest" not in sys.modules:
+    # Không có basicConfig() thì mọi logger.info/warning trong app (jobs, adapters...)
+    # rơi vào "root logger không handler" → im lặng, kể cả khi có lỗi thật.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    # Console Windows mặc định cp1252 — log/print có dấu tiếng Việt hoặc emoji (⚠️...)
+    # làm crash tiến trình ngay tại lệnh print/log, không phải lỗi logic bên trong.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+        sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):
+        # .reconfigure() chỉ có ở Python 3.7+ trên TextIOWrapper thật — môi trường nào
+        # không có (Python cũ, stdout đã bị thay bằng object khác) thì bỏ qua, không chặn app.
+        pass
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))

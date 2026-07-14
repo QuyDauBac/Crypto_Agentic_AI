@@ -248,7 +248,9 @@ pip install -r requirements.txt
 **2. Lấy API keys**
 - 🔑 **CoinGecko** *(miễn phí)* — đăng ký Demo API key tại coingecko.com/en/api/pricing
 - 🔑 **Gemini** *(miễn phí, bắt buộc)* — tạo key tại Google AI Studio
-- 🔑 **CryptoPanic** *(miễn phí, tùy chọn)* — đăng ký lấy `auth_token` trong dashboard
+- 📰 **Nguồn tin tức: CoinTelegraph RSS** — free, **không cần đăng ký/key gì cả**.
+  (Trước đây dùng CryptoPanic nhưng họ ngừng free tier từ 04/2026; CoinGecko News chỉ có
+  ở gói Pro — nên chuyển sang RSS công khai, lọc tin theo coin qua tag phía server.)
 - 🔑 **OKX** *(tùy chọn, để dùng tính năng đồng bộ ví)* — vào OKX → Tài khoản → API →
   tạo key mới với **chỉ quyền Đọc (Read)** — **không** tick Trade/Withdraw, nên bật IP Whitelist
 
@@ -265,8 +267,8 @@ COINGECKO_DEMO_KEY=your_key
 GEMINI_API_KEY=your_key
 GEMINI_MODEL=gemini-2.5-flash
 
-CRYPTOPANIC_BASE_URL=https://cryptopanic.com/api/developer/v2
-CRYPTOPANIC_TOKEN=your_token
+# Tin tức (CoinTelegraph RSS) — không cần key, để mặc định là chạy
+COINTELEGRAPH_BASE_URL=https://cointelegraph.com
 
 JWT_SECRET=your_random_secret
 JWT_EXPIRE_MINUTES=60
@@ -281,9 +283,9 @@ ALERT_CHECK_INTERVAL_MINUTES=10
 PROACTIVE_INTERVAL_HOURS=6
 REFRESH_COINS_INTERVAL_HOURS=24
 ```
-> Chỉ `GEMINI_API_KEY` là bắt buộc để Agent hoạt động. Thiếu `CRYPTOPANIC_TOKEN` thì phần tin
-> tức trả rỗng (graceful). Thiếu `ENCRYPTION_KEY` thì trang `/wallet` sẽ lỗi khi kết nối OKX —
-> các tính năng khác không bị ảnh hưởng.
+> Chỉ `GEMINI_API_KEY` là bắt buộc để Agent hoạt động. Tin tức dùng CoinTelegraph RSS nên
+> không cần key — nguồn lỗi/timeout thì phần tin trả rỗng (graceful). Thiếu `ENCRYPTION_KEY`
+> thì trang `/wallet` sẽ lỗi khi kết nối OKX — các tính năng khác không bị ảnh hưởng.
 
 **5. Chạy**
 ```bash

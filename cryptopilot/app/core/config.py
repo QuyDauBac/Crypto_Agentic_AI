@@ -31,7 +31,11 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
-    # ── CryptoPanic (news) ──
+    # ── CoinTelegraph RSS (news — nguồn hiện tại, free không cần key) ──
+    COINTELEGRAPH_BASE_URL: str = "https://cointelegraph.com"
+
+    # ── CryptoPanic (news — KHÔNG còn dùng: ngừng free tier 04/2026; giữ config
+    #    phòng trường hợp quay lại bản trả phí) ──
     CRYPTOPANIC_BASE_URL: str = "https://cryptopanic.com/api/developer/v2"
     CRYPTOPANIC_TOKEN: str = ""
 

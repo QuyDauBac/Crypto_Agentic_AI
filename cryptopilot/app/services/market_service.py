@@ -35,10 +35,14 @@ _CACHE_TTL = int(getattr(settings, "MARKET_CACHE_TTL_SECONDS", 60))
 # Đơn process (uvicorn 1 worker cho scope đồ án) nên dict module-level là đủ.
 _price_cache: dict[str, tuple[float, float]] = {}
 
+# Cache OHLC cho trang chi tiết coin: { (coingecko_id, days): (rows, fetched_at) }
+_ohlc_cache: dict[tuple[str, int], tuple[list[dict], float]] = {}
+
 
 def _clear_price_cache() -> None:
     """Tiện cho test — xóa cache giữa các test case."""
     _price_cache.clear()
+    _ohlc_cache.clear()
 
 
 class MarketService:
@@ -144,6 +148,35 @@ class MarketService:
             logger.warning("CoinGecko history lỗi (%s): %s", coingecko_id, exc)
             return []
         return [PricePoint(**p) for p in raw]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Nến OHLC (trang chi tiết coin — candlestick chart)
+    # ──────────────────────────────────────────────────────────────────────
+    async def get_coin_ohlc(self, coingecko_id: str, days: int = 30) -> list[dict]:
+        """Nến OHLC có TTL cache (như giá) + graceful degradation (lỗi → []).
+
+        Key cache theo (coin, days) vì CoinGecko trả độ chi tiết nến khác nhau
+        theo days — không tái dùng chéo giữa các khung được.
+        """
+        key = (coingecko_id, days)
+        cached = _ohlc_cache.get(key)
+        if cached and (time.monotonic() - cached[1]) < _CACHE_TTL:
+            return cached[0]
+        try:
+            rows = await self.adapter.get_ohlc(coingecko_id, days)
+        except Exception as exc:  # noqa: BLE001 — graceful degradation như get_history
+            logger.warning("CoinGecko OHLC lỗi (%s, %sd): %s", coingecko_id, days, exc)
+            return []
+        _ohlc_cache[key] = (rows, time.monotonic())
+        return rows
+
+    def get_coin(self, coingecko_id: str) -> Coin | None:
+        """Tra bản ghi Coin local theo coingecko_id (name/symbol/image cho trang chi tiết)."""
+        return (
+            self.db.execute(select(Coin).where(Coin.coingecko_id == coingecko_id))
+            .scalars()
+            .first()
+        )
 
     # ──────────────────────────────────────────────────────────────────────
     # Đồng bộ danh sách coin (dùng cho job refresh 24h ở Phase 5)

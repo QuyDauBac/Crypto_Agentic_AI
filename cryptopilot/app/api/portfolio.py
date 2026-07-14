@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.adapters.coingecko_adapter import CoinGeckoAdapter
 from app.api.deps import get_current_user
+from app.api.template_filters import register as register_template_filters
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.market import PricePoint
@@ -33,53 +34,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
-def _usd(value, decimals=2):
-    if value is None:
-        return "—"
-    return f"${float(value):,.{decimals}f}"
-
-
-def _usd_signed(value):
-    if value is None:
-        return "—"
-    return f"{float(value):+,.2f}"
-
-
-def _qty(value):
-    if value is None:
-        return "—"
-    s = f"{float(value):,.6f}".rstrip("0").rstrip(".")
-    return s if s else "0"
-
-
-def _pct(value, decimals=2):
-    if value is None:
-        return "—"
-    return f"{float(value):+.{decimals}f}%"
-
-
-def _coin_color(symbol):
-    palette = [
-        "#f7931a",
-        "#627eea",
-        "#14b8a6",
-        "#2a5ada",
-        "#3468d1",
-        "#e84142",
-        "#e6007a",
-        "#8247e5",
-        "#3b4552",
-        "#c2a633",
-    ]
-    idx = sum(ord(c) for c in symbol) % len(palette)
-    return palette[idx]
-
-
-templates.env.filters["usd"] = _usd
-templates.env.filters["usd_signed"] = _usd_signed
-templates.env.filters["qty"] = _qty
-templates.env.filters["pct"] = _pct
-templates.env.globals["coin_color"] = _coin_color
+register_template_filters(templates.env)
 
 
 # Khung thời gian hiển thị trên biểu đồ "Hiệu suất vs Bitcoin". Khung chỉ unlocked=True

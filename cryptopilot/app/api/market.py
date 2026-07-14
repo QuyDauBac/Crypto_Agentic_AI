@@ -2,6 +2,7 @@
 
 Endpoints:
   GET  /market                  → trang demo: ô tìm coin + kết quả + giá
+  GET  /market/coin/{id}         → trang chi tiết coin: candlestick chart + tin tức
   GET  /market/api/search?q=     → JSON list coin (cho gợi ý/tìm)
   GET  /market/api/prices?ids=   → JSON giá nhiều coin (JS poll để cập nhật "real-time")
 
@@ -12,22 +13,28 @@ Khai báo `async def` vì có await gọi CoinGecko (external API). Phần DB (q
 sync nhưng nhẹ, chấp nhận được trong scope đồ án.
 """
 
+from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.adapters.coingecko_adapter import CoinGeckoAdapter
+from app.adapters.cointelegraph_adapter import CoinTelegraphAdapter
+from app.api.template_filters import register as register_template_filters
 from app.core.database import get_db
 from app.schemas.market import CoinResult, PriceSnapshot
 from app.services.market_service import MarketService
+from app.services.news_service import NewsService
+from app.services.portfolio_service import PortfolioService
 
 router = APIRouter(prefix="/market", tags=["market"])
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+register_template_filters(templates.env)
 
 
 def get_market_service(db: Session = Depends(get_db)) -> MarketService:
@@ -61,6 +68,74 @@ async def market_page(
             "results": results[:15],
             "prices": snapshot.prices if snapshot else {},
             "stale": snapshot.stale if snapshot else False,
+        },
+    )
+
+
+def get_news_service(db: Session = Depends(get_db)) -> NewsService:
+    """NewsService cho trang chi tiết coin — bind CoinTelegraphAdapter một chỗ (như market)."""
+    market = MarketService(db=db, adapter=CoinGeckoAdapter())
+    portfolio = PortfolioService(db=db, market_service=market)
+    return NewsService(
+        db=db, adapter=CoinTelegraphAdapter(), portfolio_service=portfolio
+    )
+
+
+# Các giá trị days hợp lệ cho nến OHLC (CoinGecko chấp nhận 1/7/14/30/90/180/365/max;
+# UI chỉ đưa 5 lựa chọn). Giá trị lạ trên query param → rơi về 30.
+_OHLC_DAYS_CHOICES = (1, 7, 30, 90, 365)
+_OHLC_DEFAULT_DAYS = 30
+
+
+def _format_published(raw: str) -> str:
+    """ISO 8601 của CryptoPanic → 'dd/mm/yyyy HH:MM' cho card tin tức."""
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).strftime(
+            "%d/%m/%Y %H:%M"
+        )
+    except ValueError:
+        return raw
+
+
+@router.get("/coin/{coingecko_id}", response_class=HTMLResponse)
+async def coin_detail(
+    request: Request,
+    coingecko_id: str,
+    days: int = Query(default=_OHLC_DEFAULT_DAYS),
+    service: MarketService = Depends(get_market_service),
+    news_service: NewsService = Depends(get_news_service),
+) -> HTMLResponse:
+    if days not in _OHLC_DAYS_CHOICES:
+        days = _OHLC_DEFAULT_DAYS
+
+    # Coin chưa có trong bảng local (user gõ URL trực tiếp) → thử search để upsert
+    coin = service.get_coin(coingecko_id)
+    if coin is None:
+        await service.search_coins(coingecko_id)
+        coin = service.get_coin(coingecko_id)
+    if coin is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy coin")
+
+    snapshot = await service.get_prices([coingecko_id])
+    ohlc = await service.get_coin_ohlc(coingecko_id, days)
+    news = await news_service.get_news_for_coin(coingecko_id, limit=10)
+    for n in news:
+        n["published_display"] = _format_published(n.get("published_at") or "")
+
+    return templates.TemplateResponse(
+        request,
+        "market/coin_detail.html",
+        {
+            "coin": coin,
+            "price": snapshot.prices.get(coingecko_id),
+            "stale": snapshot.stale,
+            "days": days,
+            "days_choices": _OHLC_DAYS_CHOICES,
+            "ohlc": ohlc,
+            "news": news,
+            # hỏi adapter (không đọc settings trực tiếp) để test override được;
+            # CoinTelegraph RSS không cần key → luôn True, giữ cờ cho adapter tương lai
+            "news_configured": news_service.adapter.is_configured,
         },
     )
 

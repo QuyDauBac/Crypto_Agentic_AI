@@ -1,0 +1,189 @@
+{# templates/market/coin_detail.html — GET /market/coin/{coingecko_id}?days=N
+   Context (app/api/market.py::coin_detail): coin (models.Coin), price (float|None),
+   stale (bool), days (int), days_choices (tuple), ohlc (list[dict]), news (list[dict]),
+   news_configured (bool)
+#}
+{% extends "base.html" %}
+
+{% block title %}{{ coin.name }} ({{ coin.symbol|upper }}) — CryptoPilot{% endblock %}
+
+{% block extra_css %}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/portfolio.css') }}">
+  <style>
+    .cp-coin-hero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .cp-coin-hero img { width: 44px; height: 44px; border-radius: 50%; }
+    .cp-coin-hero-price {
+      margin-left: auto;
+      font-family: var(--cp-mono-font);
+      font-size: 26px;
+      font-weight: 600;
+    }
+    .cp-candle-wrap { position: relative; height: 420px; }
+    .cp-news-card {
+      display: block;
+      padding: 14px 16px;
+      border-radius: 13px;
+      background: var(--cp-panel-bg);
+      border: 1px solid var(--cp-panel-border);
+      text-decoration: none;
+      color: inherit;
+      transition: border-color .15s ease, background .15s ease;
+    }
+    .cp-news-card:hover { border-color: rgba(139, 92, 246, .45); background: rgba(139, 92, 246, .07); color: inherit; }
+    .cp-news-title { font-size: 14px; font-weight: 600; line-height: 1.45; margin-bottom: 7px; }
+    .cp-news-meta { display: flex; align-items: center; gap: 9px; font-size: 11.5px; color: var(--cp-text-faint); font-family: var(--cp-mono-font); }
+    .cp-news-source {
+      padding: 1px 7px;
+      border-radius: 6px;
+      background: rgba(34, 211, 238, .1);
+      color: #67e8f9;
+    }
+    .cp-news-list { display: flex; flex-direction: column; gap: 10px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="cp-page">
+
+  <div class="cp-header-row">
+    <div>
+      <div class="cp-breadcrumb">
+        <a href="/market" style="color:inherit;text-decoration:none">Thị trường</a><span style="opacity:.5">/</span>
+        <span class="cp-crumb-current">{{ coin.symbol|upper }}</span>
+      </div>
+      <div class="cp-coin-hero">
+        {% if coin.image_url %}
+        <img src="{{ coin.image_url }}" alt="">
+        {% else %}
+        <span class="cp-coin-avatar" style="width:44px;height:44px;background:{{ coin_color(coin.symbol) }}">{{ coin.symbol[0]|upper }}</span>
+        {% endif %}
+        <div>
+          <h1 class="cp-page-title" style="margin-bottom:2px">{{ coin.name }}</h1>
+          <span class="cp-coin-sym" style="font-size:13px">{{ coin.symbol|upper }} / USD</span>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div class="cp-coin-hero-price">{{ price|usd(4) if price is not none else '—' }}</div>
+      {% if stale %}<div style="font-size:11.5px;color:#f5b342">⚠️ giá cache — CoinGecko tạm gián đoạn</div>{% endif %}
+    </div>
+  </div>
+
+  {# ---------------- candlestick chart ---------------- #}
+  <div class="cp-panel" style="margin-bottom:18px">
+    <div class="cp-chart-header">
+      <div class="cp-panel-title" style="margin-bottom:0">Biểu đồ nến</div>
+      <div class="cp-tf-group">
+        {% set tf_labels = {1: '1D', 7: '7D', 30: '30D', 90: '90D', 365: '1Y'} %}
+        {% for d in days_choices %}
+        <a href="/market/coin/{{ coin.coingecko_id }}?days={{ d }}"
+           class="cp-tf-btn {{ 'is-active' if d == days else '' }}"
+           style="text-decoration:none">{{ tf_labels[d] }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% if ohlc %}
+    <div id="cp-candle-chart" class="cp-candle-wrap"></div>
+    <p style="font-size:11.5px;color:rgba(255,255,255,.35);margin:10px 0 0">
+      Nguồn: CoinGecko · độ chi tiết nến tự động theo khung (1-2 ngày: nến 30 phút · 3-30 ngày: nến 4 giờ · trên 30 ngày: nến 4 ngày)
+    </p>
+    {% else %}
+    <div class="cp-chart-empty">
+      <p>Không lấy được dữ liệu nến từ CoinGecko — thử lại sau ít phút (rate limit free tier ~30 calls/phút).</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ---------------- news ---------------- #}
+  <div class="cp-panel">
+    <div class="cp-panel-title">Tin tức mới nhất về {{ coin.symbol|upper }}</div>
+    {% if news %}
+    <div class="cp-news-list">
+      {% for n in news %}
+      <a class="cp-news-card" href="{{ n.url }}" target="_blank" rel="noopener noreferrer">
+        <div class="cp-news-title">{{ n.title }}</div>
+        <div class="cp-news-meta">
+          <span class="cp-news-source">{{ n.source }}</span>
+          <span>{{ n.published_display }}</span>
+          <span style="margin-left:auto">mở tab mới ↗</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% elif not news_configured %}
+    <div class="cp-chart-empty" style="height:120px">
+      <p>Chưa cấu hình nguồn tin tức — xem hướng dẫn trong README (mục Nguồn tin tức).</p>
+    </div>
+    {% else %}
+    <div class="cp-chart-empty" style="height:120px">
+      <p>Chưa có tin nào về {{ coin.symbol|upper }} gần đây (nguồn: CoinTelegraph RSS).</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if ohlc %}
+{# pin cứng version đã test thực tế (12/07/2026) — URL không pin từng trỏ bản này;
+   shim addCandlestickSeries/addSeries bên dưới vẫn giữ để nâng version thủ công an toàn #}
+<script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+  (function () {
+    'use strict';
+    var raw = {{ ohlc | tojson }};
+    var el = document.getElementById('cp-candle-chart');
+    if (!el || !window.LightweightCharts || !raw.length) return;
+
+    var data = raw.map(function (c) {
+      return {
+        time: Math.floor(c.timestamp / 1000),
+        open: c.open, high: c.high, low: c.low, close: c.close
+      };
+    });
+
+    var chart = LightweightCharts.createChart(el, {
+      autoSize: true,
+      layout: {
+        background: { color: 'transparent' },
+        textColor: 'rgba(255,255,255,.45)',
+        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        fontSize: 11
+      },
+      grid: {
+        vertLines: { color: 'rgba(255,255,255,.05)' },
+        horzLines: { color: 'rgba(255,255,255,.05)' }
+      },
+      timeScale: {
+        borderColor: 'rgba(255,255,255,.1)',
+        timeVisible: {{ 'true' if days <= 30 else 'false' }}
+      },
+      rightPriceScale: { borderColor: 'rgba(255,255,255,.1)' },
+      crosshair: {
+        vertLine: { color: 'rgba(139,92,246,.45)', labelBackgroundColor: '#8b5cf6' },
+        horzLine: { color: 'rgba(139,92,246,.45)', labelBackgroundColor: '#8b5cf6' }
+      }
+    });
+
+    // Nến lên/xuống theo tông Aurora — khớp màu lãi/lỗ ở Portfolio
+    var seriesOptions = {
+      upColor: '#34d399', downColor: '#f8698a',
+      borderUpColor: '#34d399', borderDownColor: '#f8698a',
+      wickUpColor: '#34d399', wickDownColor: '#f8698a'
+    };
+    // lightweight-charts v4: chart.addCandlestickSeries(opts)
+    // v5 (unpkg không pin version → có thể là bản mới): chart.addSeries(CandlestickSeries, opts)
+    var series = chart.addCandlestickSeries
+      ? chart.addCandlestickSeries(seriesOptions)
+      : chart.addSeries(LightweightCharts.CandlestickSeries, seriesOptions);
+
+    series.setData(data);
+    chart.timeScale().fitContent();
+
+    // tiện debug/tooling (không ảnh hưởng UI)
+    window.CP_CANDLE_CHART = chart;
+  })();
+</script>
+{% endif %}
+{% endblock %}

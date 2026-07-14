@@ -91,6 +91,9 @@ class _NullAdapter(MarketDataInterface):
     async def get_coin_list(self):
         return []
 
+    async def get_ohlc(self, coingecko_id, days):
+        return []
+
 
 FILLS_FIXTURE = [
     {

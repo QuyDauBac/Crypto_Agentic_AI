@@ -45,3 +45,14 @@ class MarketDataInterface(ABC):
         Trả về list dict { "coingecko_id": str, "symbol": str, "name": str }.
         Tương đương endpoint /coins/list. Gọi thưa (24h/lần) vì list rất dài.
         """
+
+    @abstractmethod
+    async def get_ohlc(self, coingecko_id: str, days: int) -> list[dict]:
+        """Nến OHLC N ngày cho candlestick chart (trang chi tiết coin).
+
+        Trả về list dict { "timestamp": int (ms), "open", "high", "low", "close": float }
+        theo thứ tự thời gian. Tương đương endpoint /coins/{id}/ohlc.
+
+        Độ chi tiết nến do CoinGecko tự quyết theo days (KHÔNG cấu hình được):
+        1-2 ngày → nến 30 phút, 3-30 ngày → nến 4 giờ, >30 ngày → nến 4 ngày.
+        """

@@ -91,6 +91,25 @@ class CoinGeckoAdapter(MarketDataInterface):
             if isinstance(point, (list, tuple)) and len(point) >= 2
         ]
 
+    async def get_ohlc(self, coingecko_id: str, days: int) -> list[dict]:
+        data = await self._get(
+            f"/coins/{coingecko_id}/ohlc",
+            {"vs_currency": "usd", "days": days},
+        )
+        # data = [[timestamp_ms, open, high, low, close], ...]
+        rows = data if isinstance(data, list) else []
+        return [
+            {
+                "timestamp": int(r[0]),
+                "open": float(r[1]),
+                "high": float(r[2]),
+                "low": float(r[3]),
+                "close": float(r[4]),
+            }
+            for r in rows
+            if isinstance(r, (list, tuple)) and len(r) >= 5
+        ]
+
     async def get_coin_list(self) -> list[dict]:
         data = await self._get("/coins/list")
         rows = data if isinstance(data, list) else []

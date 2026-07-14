@@ -9,7 +9,7 @@ phân tích (1 call/user) → nếu có nhận định (khác "NONE") thì tạo
 import logging
 
 from app.adapters.coingecko_adapter import CoinGeckoAdapter
-from app.adapters.cryptopanic_adapter import CryptoPanicAdapter
+from app.adapters.cointelegraph_adapter import CoinTelegraphAdapter
 from app.agent.gemini_client import GeminiClient
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -59,7 +59,7 @@ async def proactive_agent() -> None:
         market = MarketService(db=db, adapter=CoinGeckoAdapter())
         portfolio = PortfolioService(db=db, market_service=market)
         news = NewsService(
-            db=db, adapter=CryptoPanicAdapter(), portfolio_service=portfolio
+            db=db, adapter=CoinTelegraphAdapter(), portfolio_service=portfolio
         )
         client = GeminiClient(
             api_key=settings.GEMINI_API_KEY, model=settings.GEMINI_MODEL

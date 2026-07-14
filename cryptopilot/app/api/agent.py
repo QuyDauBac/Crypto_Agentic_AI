@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.adapters.coingecko_adapter import CoinGeckoAdapter
-from app.adapters.cryptopanic_adapter import CryptoPanicAdapter
+from app.adapters.cointelegraph_adapter import CoinTelegraphAdapter
 from app.agent.gemini_client import GeminiClient, LLMClient
 from app.agent.orchestrator import AgentOrchestrator
 from app.agent.tools import ToolContext
@@ -53,7 +53,9 @@ def get_agent_deps(db: Session = Depends(get_db)) -> AgentDeps:
     """Bind provider MỘT CHỖ — đổi LLM/registrar/news chỉ sửa ở đây. Test override dep này."""
     market = MarketService(db=db, adapter=CoinGeckoAdapter())
     portfolio = PortfolioService(db=db, market_service=market)
-    news = NewsService(db=db, adapter=CryptoPanicAdapter(), portfolio_service=portfolio)
+    news = NewsService(
+        db=db, adapter=CoinTelegraphAdapter(), portfolio_service=portfolio
+    )
     client = GeminiClient(api_key=settings.GEMINI_API_KEY, model=settings.GEMINI_MODEL)
     return AgentDeps(
         db=db, portfolio=portfolio, market=market, news=news, client=client

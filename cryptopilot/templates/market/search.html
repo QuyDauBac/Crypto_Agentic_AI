@@ -39,10 +39,14 @@
             {% for coin in results %}
             <tr>
               <td>
-                {% if coin.image_url %}
-                <img src="{{ coin.image_url }}" alt="" width="22" height="22" class="me-2 rounded-circle">
-                {% endif %}
-                {{ coin.name }}
+                <a href="/market/coin/{{ coin.coingecko_id }}" class="text-decoration-none"
+                   style="color:inherit" title="Xem biểu đồ nến + tin tức {{ coin.name }}">
+                  {% if coin.image_url %}
+                  <img src="{{ coin.image_url }}" alt="" width="22" height="22" class="me-2 rounded-circle">
+                  {% endif %}
+                  {{ coin.name }}
+                  <span class="cp-text-secondary small ms-1">📈</span>
+                </a>
               </td>
               <td><span class="badge bg-secondary text-uppercase">{{ coin.symbol }}</span></td>
               <td class="text-end fw-semibold price-cell" data-coin-id="{{ coin.coingecko_id }}">
