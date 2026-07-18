@@ -1,7 +1,16 @@
 {# templates/market/coin_detail.html — GET /market/coin/{coingecko_id}?days=N
    Context (app/api/market.py::coin_detail): coin (models.Coin), price (float|None),
-   stale (bool), days (int), days_choices (tuple), ohlc (list[dict]), news (list[dict]),
-   news_configured (bool)
+   stale (bool), change_24h_pct (float|None), market_cap/volume_24h/circulating_supply/
+   ath/max_supply (float|None), market_cap_rank (int|None), days (int),
+   days_choices (tuple), ohlc (list[dict]), news (list[dict]), news_configured (bool),
+   binance_pair (str|None) — cặp Binance cho WebSocket giá live, None nếu coin
+   không nằm trong BINANCE_PAIRS (app/api/market.py)
+
+   Giao diện port từ thiết kế Claude Design (glassmorphism, 3 khối chart/stats/news).
+   CHỈ lấy CSS/layout — không lấy state/JS demo của bản thiết kế (dữ liệu ngẫu nhiên,
+   không phải app thật). Nền Aurora tái dùng nguyên static/js/auth.js (initGL) +
+   pattern .aurora-bg/#gradient-canvas/.aurora-flow từ static/css/auth.css — không
+   viết shader riêng cho trang này.
 #}
 {% extends "base.html" %}
 
@@ -10,112 +19,295 @@
 {% block extra_css %}
   <link rel="stylesheet" href="{{ url_for('static', path='css/portfolio.css') }}">
   <style>
-    .cp-coin-hero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-    .cp-coin-hero img { width: 44px; height: 44px; border-radius: 50%; }
-    .cp-coin-hero-price {
-      margin-left: auto;
-      font-family: var(--cp-mono-font);
-      font-size: 26px;
-      font-weight: 600;
+    /* ---------- Aurora background (tái dùng nguyên từ static/css/auth.css) ---------- */
+    .aurora-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: #050507; pointer-events: none; }
+    #gradient-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity 1.2s ease; }
+    #gradient-canvas.loaded { opacity: 1; }
+    .gl-ok .aurora-flow, .gl-ok .aurora-flow-2 { opacity: 0 !important; }
+    .aurora-flow {
+      position: absolute; inset: -30%;
+      background: linear-gradient(120deg, #e935c1 0%, #8b5cf6 22%, #6366f1 40%, #22d3ee 58%, #8b5cf6 76%, #ec4899 100%);
+      background-size: 300% 300%; filter: blur(70px); opacity: .55;
+      animation: flow-move 18s ease-in-out infinite; will-change: background-position;
     }
-    .cp-candle-wrap { position: relative; height: 420px; }
-    .cp-news-card {
-      display: block;
-      padding: 14px 16px;
-      border-radius: 13px;
-      background: var(--cp-panel-bg);
-      border: 1px solid var(--cp-panel-border);
-      text-decoration: none;
-      color: inherit;
-      transition: border-color .15s ease, background .15s ease;
+    .aurora-flow-2 {
+      position: absolute; inset: -30%;
+      background: linear-gradient(300deg, transparent 0%, #22d3ee 25%, transparent 45%, #e935c1 65%, transparent 85%, #6366f1 100%);
+      background-size: 280% 280%; filter: blur(80px); opacity: .4; mix-blend-mode: screen;
+      animation: flow-move-2 24s ease-in-out infinite; will-change: background-position;
     }
-    .cp-news-card:hover { border-color: rgba(139, 92, 246, .45); background: rgba(139, 92, 246, .07); color: inherit; }
-    .cp-news-title { font-size: 14px; font-weight: 600; line-height: 1.45; margin-bottom: 7px; }
-    .cp-news-meta { display: flex; align-items: center; gap: 9px; font-size: 11.5px; color: var(--cp-text-faint); font-family: var(--cp-mono-font); }
-    .cp-news-source {
-      padding: 1px 7px;
-      border-radius: 6px;
-      background: rgba(34, 211, 238, .1);
-      color: #67e8f9;
+    @keyframes flow-move { 0% { background-position: 0% 50%; } 25% { background-position: 50% 100%; } 50% { background-position: 100% 50%; } 75% { background-position: 50% 0%; } 100% { background-position: 0% 50%; } }
+    @keyframes flow-move-2 { 0% { background-position: 100% 0%; } 33% { background-position: 0% 60%; } 66% { background-position: 60% 100%; } 100% { background-position: 100% 0%; } }
+    /* .cp-page (portfolio.css) đã có position:relative;z-index:1 — đứng trên
+       .aurora-bg (fixed, z-index:0) đúng thứ tự vẽ, không cần override gì thêm. */
+
+    /* ---------- Glass card shell (khác .cp-panel — blur/bo góc/shadow đậm hơn
+       theo đúng thiết kế mới; đặt riêng ở đây để không ảnh hưởng trang Portfolio) --- */
+    .cd-glass {
+      background: rgba(255, 255, 255, .045);
+      border: 1px solid rgba(255, 255, 255, .09);
+      border-radius: 22px;
+      backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .65), inset 0 1px 0 rgba(255, 255, 255, .06);
+      animation: cdFloatIn .5s ease both;
     }
-    .cp-news-list { display: flex; flex-direction: column; gap: 10px; }
+    @keyframes cdFloatIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .cd-glass, .aurora-flow, .aurora-flow-2 { animation: none !important; }
+    }
+
+    .cd-breadcrumb { font-size: 13px; color: rgba(255, 255, 255, .4); display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+    .cd-breadcrumb a { color: inherit; text-decoration: none; }
+    .cd-breadcrumb a:hover { color: #c8b6ff; }
+    .cd-breadcrumb span:first-child { opacity: .5; }
+
+    /* ---------- Header card ---------- */
+    .cd-header-card {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 22px; padding: 22px 26px; margin-bottom: 20px;
+    }
+    .cd-header-left { display: flex; align-items: center; gap: 18px; }
+    .cd-avatar-wrap { position: relative; width: 56px; height: 56px; flex: none; }
+    .cd-avatar-glow {
+      position: absolute; inset: -8px; border-radius: 50%; filter: blur(4px);
+      background: radial-gradient(circle, rgba(233, 53, 193, .4), rgba(139, 92, 246, .15) 60%, transparent 72%);
+    }
+    .cd-avatar {
+      position: relative; width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: 700; color: #fff; object-fit: cover;
+      box-shadow: 0 6px 20px -6px rgba(0, 0, 0, .5), inset 0 2px 4px rgba(255, 255, 255, .25);
+    }
+    .cd-header-titles { display: flex; flex-direction: column; gap: 5px; }
+    .cd-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .cd-name { font-family: var(--cp-display-font); font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+    .cd-symbol { font-family: var(--cp-mono-font); font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .5); }
+    .cd-rank-chip {
+      font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 8px;
+      background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .1); color: rgba(255, 255, 255, .7);
+    }
+    .cd-subtitle { font-size: 13px; color: rgba(255, 255, 255, .42); }
+
+    .cd-header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .cd-price { font-family: var(--cp-mono-font); font-size: 40px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
+    .cd-price-meta { display: flex; align-items: center; gap: 10px; }
+    .cd-change-chip {
+      display: inline-flex; align-items: center; gap: 5px; font-family: var(--cp-mono-font);
+      font-size: 14px; font-weight: 600; padding: 5px 11px; border-radius: 10px;
+      color: rgba(255, 255, 255, .4); background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1);
+    }
+    .cd-change-chip.is-positive { color: #34d399; background: rgba(52, 211, 153, .13); border-color: rgba(52, 211, 153, .25); }
+    .cd-change-chip.is-negative { color: #f8698a; background: rgba(248, 105, 138, .13); border-color: rgba(248, 105, 138, .25); }
+    .cd-price-meta-label { font-size: 12.5px; color: rgba(255, 255, 255, .4); }
+    .cd-stale-note { font-size: 11.5px; color: #f5b342; }
+    .cd-live-note { font-size: 11.5px; color: rgba(255, 255, 255, .35); max-width: 260px; text-align: right; }
+    /* Flash nhẹ khi giá đổi qua WebSocket — như ticker sàn thật */
+    .cp-flash-up { animation: cpFlashGreen .5s ease; }
+    .cp-flash-down { animation: cpFlashRed .5s ease; }
+    @keyframes cpFlashGreen { 0% { color: #34d399; } 100% { color: inherit; } }
+    @keyframes cpFlashRed { 0% { color: #f8698a; } 100% { color: inherit; } }
+
+    /* ---------- Row: chart + stats ---------- */
+    .cd-row { display: grid; grid-template-columns: 1.9fr 1fr; gap: 20px; margin-bottom: 20px; }
+    @media (max-width: 820px) { .cd-row { grid-template-columns: 1fr; } }
+
+    .cd-chart-card, .cd-stats-card { padding: 20px 22px; }
+    .cd-card-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+    .cd-card-heading { display: flex; flex-direction: column; gap: 2px; }
+    .cd-card-title { font-family: var(--cp-display-font); font-size: 14px; font-weight: 600; }
+    .cd-card-sub { font-size: 11.5px; color: rgba(255, 255, 255, .4); }
+
+    .cd-tf-group { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); }
+    .cd-tf-btn {
+      font-family: var(--cp-display-font); cursor: pointer; border: none; background: transparent;
+      color: rgba(255, 255, 255, .55); font-size: 12.5px; font-weight: 600; padding: 6px 13px;
+      border-radius: 9px; text-decoration: none; transition: all .2s;
+    }
+    .cd-tf-btn.is-active { color: #fff; background: linear-gradient(135deg, #e935c1, #8b5cf6); box-shadow: 0 6px 16px -6px rgba(233, 53, 193, .6); }
+
+    .cd-chart-canvas { width: 100%; height: 400px; min-height: 400px; position: relative; }
+    .cd-chart-footnote { font-size: 11.5px; color: rgba(255, 255, 255, .35); margin: 10px 0 0; }
+    .cd-empty-note { height: 200px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 20px; }
+    .cd-empty-note p { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .5); line-height: 1.5; }
+
+    .cd-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+    .cd-stat {
+      display: flex; flex-direction: column; gap: 7px; padding: 14px; border-radius: 14px;
+      background: rgba(255, 255, 255, .035); border: 1px solid rgba(255, 255, 255, .06);
+    }
+    .cd-stat-label { font-size: 11px; font-weight: 500; color: rgba(255, 255, 255, .45); letter-spacing: .02em; }
+    .cd-stat-value { font-family: var(--cp-mono-font); font-size: 18px; font-weight: 600; }
+    .cd-stat-unit { font-size: 12px; color: rgba(255, 255, 255, .45); }
+
+    /* ---------- News ---------- */
+    .cd-news-card-wrap { padding: 22px 26px; }
+    .cd-news-list { display: flex; flex-direction: column; }
+    .cd-news-row {
+      display: flex; align-items: center; gap: 16px; padding: 15px 14px; border-radius: 14px;
+      text-decoration: none; color: inherit; transition: background .2s ease;
+    }
+    .cd-news-row:hover { background: rgba(255, 255, 255, .05); color: inherit; }
+    .cd-news-text { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .cd-news-title { font-size: 15px; font-weight: 600; color: #f4f4f7; line-height: 1.35; }
+    .cd-news-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: rgba(255, 255, 255, .42); }
+    .cd-news-time { font-family: var(--cp-mono-font); }
+    .cd-dot { opacity: .4; }
+    .cd-news-arrow { flex: none; color: rgba(255, 255, 255, .35); font-size: 16px; }
+    .cd-news-divider { height: 1px; background: rgba(255, 255, 255, .05); }
+
+    /* ---------- Mobile: 3 khối chart/stats/news xếp dọc (đã qua .cd-row ở trên
+       cho chart+stats; news vốn đã full-width nên tự xếp dưới) ---------- */
+    @media (max-width: 640px) {
+      .cd-header-card { padding: 18px; }
+      .cd-price { font-size: 32px; }
+      .cd-header-right { align-items: flex-start; width: 100%; }
+      .cd-stats-grid { grid-template-columns: 1fr 1fr; }
+      .cd-chart-canvas { height: 300px; min-height: 300px; }
+    }
   </style>
 {% endblock %}
 
 {% block content %}
+<div class="aurora-bg" aria-hidden="true">
+  <canvas id="gradient-canvas"></canvas>
+  <div class="aurora-flow"></div>
+  <div class="aurora-flow-2"></div>
+</div>
+
 <div class="cp-page">
 
-  <div class="cp-header-row">
-    <div>
-      <div class="cp-breadcrumb">
-        <a href="/market" style="color:inherit;text-decoration:none">Thị trường</a><span style="opacity:.5">/</span>
-        <span class="cp-crumb-current">{{ coin.symbol|upper }}</span>
-      </div>
-      <div class="cp-coin-hero">
+  <div class="cd-breadcrumb">
+    <a href="/market">Thị trường</a><span>/</span><span>{{ coin.symbol|upper }}</span>
+  </div>
+
+  {# ---------------- header ---------------- #}
+  <div class="cd-glass cd-header-card">
+    <div class="cd-header-left">
+      <div class="cd-avatar-wrap">
+        <div class="cd-avatar-glow"></div>
         {% if coin.image_url %}
-        <img src="{{ coin.image_url }}" alt="">
+        <img class="cd-avatar" src="{{ coin.image_url }}" alt="">
         {% else %}
-        <span class="cp-coin-avatar" style="width:44px;height:44px;background:{{ coin_color(coin.symbol) }}">{{ coin.symbol[0]|upper }}</span>
+        <div class="cd-avatar" style="background:{{ coin_color(coin.symbol) }}">{{ coin.symbol[0]|upper }}</div>
         {% endif %}
-        <div>
-          <h1 class="cp-page-title" style="margin-bottom:2px">{{ coin.name }}</h1>
-          <span class="cp-coin-sym" style="font-size:13px">{{ coin.symbol|upper }} / USD</span>
+      </div>
+      <div class="cd-header-titles">
+        <div class="cd-name-row">
+          <span class="cd-name">{{ coin.name }}</span>
+          <span class="cd-symbol">{{ coin.symbol|upper }}</span>
+          {% if market_cap_rank is not none %}<span class="cd-rank-chip">Rank #{{ market_cap_rank }}</span>{% endif %}
         </div>
+        <span class="cd-subtitle">{{ coin.name }} · USD</span>
       </div>
     </div>
-    <div style="text-align:right">
-      <div class="cp-coin-hero-price">{{ price|usd(4) if price is not none else '—' }}</div>
-      {% if stale %}<div style="font-size:11.5px;color:#f5b342">⚠️ giá cache — CoinGecko tạm gián đoạn</div>{% endif %}
+    <div class="cd-header-right">
+      <span class="cd-price" id="cp-live-price">{{ price|usd(4) if price is not none else '—' }}</span>
+      <div class="cd-price-meta">
+        <span id="cp-change-24h" class="cd-change-chip {% if change_24h_pct is not none %}{{ 'is-positive' if change_24h_pct >= 0 else 'is-negative' }}{% endif %}">
+          {% if change_24h_pct is not none %}{{ '▲' if change_24h_pct >= 0 else '▼' }} {{ change_24h_pct|pct }}{% else %}—{% endif %}
+        </span>
+        <span class="cd-price-meta-label">24h</span>
+      </div>
+      {% if stale %}<div class="cd-stale-note">⚠️ giá cache — CoinGecko tạm gián đoạn</div>{% endif %}
+      {% if not binance_pair %}
+      <div class="cd-live-note">Không có dữ liệu live cho coin này — giá cập nhật khi tải lại trang</div>
+      {% endif %}
     </div>
   </div>
 
-  {# ---------------- candlestick chart ---------------- #}
-  <div class="cp-panel" style="margin-bottom:18px">
-    <div class="cp-chart-header">
-      <div class="cp-panel-title" style="margin-bottom:0">Biểu đồ nến</div>
-      <div class="cp-tf-group">
-        {% set tf_labels = {1: '1D', 7: '7D', 30: '30D', 90: '90D', 365: '1Y'} %}
-        {% for d in days_choices %}
-        <a href="/market/coin/{{ coin.coingecko_id }}?days={{ d }}"
-           class="cp-tf-btn {{ 'is-active' if d == days else '' }}"
-           style="text-decoration:none">{{ tf_labels[d] }}</a>
-        {% endfor %}
+  {# ---------------- chart + market stats ---------------- #}
+  <div class="cd-row">
+
+    <div class="cd-glass cd-chart-card">
+      <div class="cd-card-header">
+        <div class="cd-card-heading">
+          <span class="cd-card-title">Biểu đồ nến</span>
+          <span class="cd-card-sub">Candlestick · USD</span>
+        </div>
+        <div class="cd-tf-group">
+          {% set tf_labels = {1: '1D', 7: '1W', 30: '1M', 90: '3M', 365: '1Y'} %}
+          {% for d in days_choices %}
+          <a href="/market/coin/{{ coin.coingecko_id }}?days={{ d }}"
+             class="cd-tf-btn {{ 'is-active' if d == days else '' }}">{{ tf_labels[d] }}</a>
+          {% endfor %}
+        </div>
+      </div>
+      {% if ohlc %}
+      <div id="cp-candle-chart" class="cd-chart-canvas"></div>
+      <p class="cd-chart-footnote">
+        Nguồn: CoinGecko · độ chi tiết nến tự động theo khung (1-2 ngày: nến 30 phút · 3-30 ngày: nến 4 giờ · trên 30 ngày: nến 4 ngày)
+      </p>
+      {% else %}
+      <div class="cd-empty-note">
+        <p>Không lấy được dữ liệu nến từ CoinGecko — thử lại sau ít phút (rate limit free tier ~30 calls/phút).</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="cd-glass cd-stats-card">
+      <span class="cd-card-title" style="display:block;margin-bottom:18px">Market Stats</span>
+      <div class="cd-stats-grid">
+        <div class="cd-stat">
+          <span class="cd-stat-label">Market Cap</span>
+          <span class="cd-stat-value">{{ market_cap|compact_usd }}</span>
+        </div>
+        <div class="cd-stat">
+          <span class="cd-stat-label">Volume 24h</span>
+          <span class="cd-stat-value">{{ volume_24h|compact_usd }}</span>
+        </div>
+        <div class="cd-stat">
+          <span class="cd-stat-label">Circulating Supply</span>
+          <span class="cd-stat-value">
+            {{ circulating_supply|compact_number }}{% if circulating_supply is not none %} <span class="cd-stat-unit">{{ coin.symbol|upper }}</span>{% endif %}
+          </span>
+        </div>
+        <div class="cd-stat">
+          <span class="cd-stat-label">Market Rank</span>
+          <span class="cd-stat-value">{{ ('#' ~ market_cap_rank) if market_cap_rank is not none else '—' }}</span>
+        </div>
+        <div class="cd-stat">
+          <span class="cd-stat-label">All-Time High</span>
+          <span class="cd-stat-value">{{ ath|usd(0) if ath is not none else '—' }}</span>
+        </div>
+        <div class="cd-stat">
+          <span class="cd-stat-label">Max Supply</span>
+          <span class="cd-stat-value">
+            {{ max_supply|compact_number }}{% if max_supply is not none %} <span class="cd-stat-unit">{{ coin.symbol|upper }}</span>{% endif %}
+          </span>
+        </div>
       </div>
     </div>
-    {% if ohlc %}
-    <div id="cp-candle-chart" class="cp-candle-wrap"></div>
-    <p style="font-size:11.5px;color:rgba(255,255,255,.35);margin:10px 0 0">
-      Nguồn: CoinGecko · độ chi tiết nến tự động theo khung (1-2 ngày: nến 30 phút · 3-30 ngày: nến 4 giờ · trên 30 ngày: nến 4 ngày)
-    </p>
-    {% else %}
-    <div class="cp-chart-empty">
-      <p>Không lấy được dữ liệu nến từ CoinGecko — thử lại sau ít phút (rate limit free tier ~30 calls/phút).</p>
-    </div>
-    {% endif %}
+
   </div>
 
   {# ---------------- news ---------------- #}
-  <div class="cp-panel">
-    <div class="cp-panel-title">Tin tức mới nhất về {{ coin.symbol|upper }}</div>
+  <div class="cd-glass cd-news-card-wrap">
+    <div class="cd-card-header" style="margin-bottom:16px">
+      <span class="cd-card-title">Tin tức mới nhất</span>
+      <span class="cd-card-sub">CoinTelegraph</span>
+    </div>
     {% if news %}
-    <div class="cp-news-list">
+    <div class="cd-news-list">
       {% for n in news %}
-      <a class="cp-news-card" href="{{ n.url }}" target="_blank" rel="noopener noreferrer">
-        <div class="cp-news-title">{{ n.title }}</div>
-        <div class="cp-news-meta">
-          <span class="cp-news-source">{{ n.source }}</span>
-          <span>{{ n.published_display }}</span>
-          <span style="margin-left:auto">mở tab mới ↗</span>
+      <a class="cd-news-row" href="{{ n.url }}" target="_blank" rel="noopener noreferrer">
+        <div class="cd-news-text">
+          <span class="cd-news-title">{{ n.title }}</span>
+          <div class="cd-news-meta">
+            <span>{{ n.source }}</span><span class="cd-dot">·</span><span class="cd-news-time">{{ n.published_display }}</span>
+          </div>
         </div>
+        <span class="cd-news-arrow">↗</span>
       </a>
+      {% if not loop.last %}<div class="cd-news-divider"></div>{% endif %}
       {% endfor %}
     </div>
     {% elif not news_configured %}
-    <div class="cp-chart-empty" style="height:120px">
+    <div class="cd-empty-note">
       <p>Chưa cấu hình nguồn tin tức — xem hướng dẫn trong README (mục Nguồn tin tức).</p>
     </div>
     {% else %}
-    <div class="cp-chart-empty" style="height:120px">
+    <div class="cd-empty-note">
       <p>Chưa có tin nào về {{ coin.symbol|upper }} gần đây (nguồn: CoinTelegraph RSS).</p>
     </div>
     {% endif %}
@@ -125,6 +317,11 @@
 {% endblock %}
 
 {% block extra_js %}
+  {# Aurora shader — tái dùng NGUYÊN VẸN static/js/auth.js (initGL), không viết bản
+     riêng. File này còn có initPwToggles()/initConfirmPw() cho trang auth — vô hại ở
+     đây vì querySelector của chúng không khớp phần tử nào trên trang này. #}
+  <script src="{{ url_for('static', path='js/auth.js') }}"></script>
+
 {% if ohlc %}
 {# pin cứng version đã test thực tế (12/07/2026) — URL không pin từng trỏ bản này;
    shim addCandlestickSeries/addSeries bên dưới vẫn giữ để nâng version thủ công an toàn #}
@@ -181,8 +378,132 @@
     series.setData(data);
     chart.timeScale().fitContent();
 
-    // tiện debug/tooling (không ảnh hưởng UI)
+    // tiện debug/tooling + để khối WebSocket live bên dưới (độc lập, chạy dù khối
+    // này không tồn tại) cập nhật nến cuối khi có
     window.CP_CANDLE_CHART = chart;
+    window.CP_CANDLE_SERIES = series;
+  })();
+</script>
+{% endif %}
+
+{% if binance_pair %}
+<script>
+  (function () {
+    'use strict';
+    // Giá live qua Binance WebSocket công khai — KHÔNG đụng backend Python.
+    // CoinGecko cache nội bộ 1-5 phút nên polling REST không "sống" thật; Binance
+    // đẩy theo stream <symbol>@ticker (24hrTicker, ~1 lần/giây), cho cả giá lẫn %
+    // thay đổi 24h thật trong CÙNG 1 kết nối — không cần stream @kline_1m riêng
+    // như bản nháp ban đầu vì kline không mang field % 24h.
+    var pair = {{ binance_pair | tojson }};
+    var activeDays = {{ days }};
+    // Chỉ cập nhật nến khi khung đang chọn khớp độ chi tiết OHLC của CoinGecko cho
+    // khung đó (1D → nến 30 phút, 1W → nến 4 giờ) — khung dài hơn giữ nguyên chart,
+    // chỉ cập nhật giá/badge header (tick 1 phút sẽ làm vỡ nến 4 ngày/1Y).
+    var bucketMs = activeDays === 1 ? 30 * 60 * 1000 : (activeDays === 7 ? 4 * 60 * 60 * 1000 : null);
+
+    var priceEl = document.getElementById('cp-live-price');
+    var changeEl = document.getElementById('cp-change-24h');
+    if (!priceEl || typeof WebSocket === 'undefined') return;
+
+    var ws = null;
+    var reconnectAttempts = 0;
+    var reconnectDelays = [2000, 5000, 10000];
+    var closedByUser = false;
+    var lastPrice = null;
+    var currentBucketStart = null;
+    var currentBar = null;
+
+    function formatUsd(n) {
+      return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    }
+
+    function flash(el, isUp) {
+      el.classList.remove('cp-flash-up', 'cp-flash-down');
+      void el.offsetWidth; // ép reflow — cho animation chạy lại nếu 2 tick liên tiếp cùng chiều
+      el.classList.add(isUp ? 'cp-flash-up' : 'cp-flash-down');
+      window.setTimeout(function () {
+        el.classList.remove('cp-flash-up', 'cp-flash-down');
+      }, 500);
+    }
+
+    function updateHeader(price, changePct) {
+      priceEl.textContent = formatUsd(price);
+      if (lastPrice !== null && price !== lastPrice) flash(priceEl, price > lastPrice);
+      lastPrice = price;
+
+      if (changeEl && isFinite(changePct)) {
+        changeEl.textContent = (changePct >= 0 ? '▲ +' : '▼ ') + changePct.toFixed(2) + '%';
+        changeEl.classList.toggle('is-positive', changePct >= 0);
+        changeEl.classList.toggle('is-negative', changePct < 0);
+      }
+    }
+
+    function updateCandle(price, eventTimeMs) {
+      var series = window.CP_CANDLE_SERIES;
+      if (!series || !bucketMs) return; // không có chart, hoặc khung không phải 1D/1W
+      var bucketStart = Math.floor(eventTimeMs / bucketMs) * bucketMs;
+      var timeSec = Math.floor(bucketStart / 1000);
+      if (currentBucketStart !== bucketStart) {
+        currentBucketStart = bucketStart;
+        currentBar = { time: timeSec, open: price, high: price, low: price, close: price };
+      } else if (currentBar) {
+        currentBar.high = Math.max(currentBar.high, price);
+        currentBar.low = Math.min(currentBar.low, price);
+        currentBar.close = price;
+      }
+      if (currentBar) series.update(currentBar);
+    }
+
+    function handleMessage(ev) {
+      var data;
+      try { data = JSON.parse(ev.data); } catch (e) { return; }
+      var price = parseFloat(data.c); // last price
+      if (!isFinite(price)) return;
+      updateHeader(price, parseFloat(data.P)); // P = % thay đổi 24h
+      updateCandle(price, data.E || Date.now());
+    }
+
+    function connect() {
+      try {
+        ws = new WebSocket('wss://stream.binance.com:9443/ws/' + pair.toLowerCase() + '@ticker');
+      } catch (e) {
+        return; // môi trường không hỗ trợ WebSocket — im lặng, giữ giá tĩnh từ lần load trang
+      }
+      ws.addEventListener('open', function () { reconnectAttempts = 0; });
+      ws.addEventListener('message', handleMessage);
+      ws.addEventListener('error', function () { if (ws) ws.close(); });
+      ws.addEventListener('close', function () {
+        if (closedByUser) return;
+        if (reconnectAttempts >= reconnectDelays.length) return; // hết 3 lần thử — âm thầm dừng hẳn
+        var delay = reconnectDelays[reconnectAttempts];
+        reconnectAttempts += 1;
+        window.setTimeout(connect, delay);
+      });
+    }
+
+    function closeForGood() {
+      closedByUser = true;
+      if (ws) ws.close();
+    }
+    window.addEventListener('beforeunload', closeForGood);
+    window.addEventListener('pagehide', closeForGood); // bfcache / rời trang
+
+    connect();
+
+    // tiện debug/tooling (không ảnh hưởng UI)
+    window.CP_LIVE_WS_CLOSE = closeForGood;
+    window.CP_LIVE_WS_STATE = function () {
+      return {
+        readyState: ws ? ws.readyState : null,
+        url: ws ? ws.url : null,
+        reconnectAttempts: reconnectAttempts,
+        closedByUser: closedByUser,
+      };
+    };
+    // Mô phỏng rớt mạng để test logic reconnect (khác CP_LIVE_WS_CLOSE — không set
+    // closedByUser nên onclose sẽ tự thử kết nối lại như rớt mạng thật)
+    window.CP_LIVE_WS_SIMULATE_DROP = function () { if (ws) ws.close(); };
   })();
 </script>
 {% endif %}

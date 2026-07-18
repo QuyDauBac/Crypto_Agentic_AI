@@ -56,3 +56,22 @@ class MarketDataInterface(ABC):
         Độ chi tiết nến do CoinGecko tự quyết theo days (KHÔNG cấu hình được):
         1-2 ngày → nến 30 phút, 3-30 ngày → nến 4 giờ, >30 ngày → nến 4 ngày.
         """
+
+    @abstractmethod
+    async def get_coin_market_data(self, coingecko_id: str) -> dict | None:
+        """Giá + % thay đổi 24h + market stats cho trang chi tiết coin (1 lần gọi).
+
+        Trả về hoặc None nếu CoinGecko không có dữ liệu cho coin này:
+        {
+            "price": float,
+            "change_24h_pct": float | None,
+            "market_cap": float | None,
+            "volume_24h": float | None,
+            "circulating_supply": float | None,
+            "market_cap_rank": int | None,
+            "ath": float | None,
+            "max_supply": float | None,
+        }
+        Tương đương endpoint /coins/{id} (market_data=true, tickers/community/developer
+        data=false để nhẹ response) — gộp 1 request thay vì gọi /simple/price riêng.
+        """

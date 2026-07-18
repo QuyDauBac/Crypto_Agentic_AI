@@ -86,6 +86,39 @@ def get_news_service(db: Session = Depends(get_db)) -> NewsService:
 _OHLC_DAYS_CHOICES = (1, 7, 30, 90, 365)
 _OHLC_DEFAULT_DAYS = 30
 
+# coingecko_id → cặp giao dịch Binance (USDT) cho WebSocket giá live trên trang chi
+# tiết coin. Hard-code ~20 coin phổ biến thay vì tra động qua CoinGecko
+# /coins/{id}?tickers=true — trade-off cố ý (xem ghi chú trong PR/summary):
+#   + đơn giản, không tốn thêm 1 call CoinGecko mỗi lần load trang (rate limit free
+#     tier ~30 calls/phút vốn đã eo hẹp), không phụ thuộc CoinGecko trả đúng field
+#     tickers/market identifier như kỳ vọng
+#   - coin ngoài danh sách này luôn hiện "không có dữ liệu live" dù có thể thực sự
+#     đang niêm yết trên Binance — chấp nhận được vì đây là tính năng phụ trợ
+#     (nice-to-have), không phải nguồn giá chính (giá chính vẫn luôn là CoinGecko)
+BINANCE_PAIRS: dict[str, str] = {
+    "bitcoin": "BTCUSDT",
+    "ethereum": "ETHUSDT",
+    "binancecoin": "BNBUSDT",
+    "ripple": "XRPUSDT",
+    "solana": "SOLUSDT",
+    "cardano": "ADAUSDT",
+    "dogecoin": "DOGEUSDT",
+    "avalanche-2": "AVAXUSDT",
+    "tron": "TRXUSDT",
+    "chainlink": "LINKUSDT",
+    "polkadot": "DOTUSDT",
+    "litecoin": "LTCUSDT",
+    "bitcoin-cash": "BCHUSDT",
+    "near": "NEARUSDT",
+    "uniswap": "UNIUSDT",
+    "stellar": "XLMUSDT",
+    "internet-computer": "ICPUSDT",
+    "aptos": "APTUSDT",
+    "filecoin": "FILUSDT",
+    "cosmos": "ATOMUSDT",
+    "shiba-inu": "SHIBUSDT",
+}
+
 
 def _format_published(raw: str) -> str:
     """ISO 8601 của CryptoPanic → 'dd/mm/yyyy HH:MM' cho card tin tức."""
@@ -118,6 +151,7 @@ async def coin_detail(
 
     snapshot = await service.get_prices([coingecko_id])
     ohlc = await service.get_coin_ohlc(coingecko_id, days)
+    market = await service.get_coin_market_data(coingecko_id)
     news = await news_service.get_news_for_coin(coingecko_id, limit=10)
     for n in news:
         n["published_display"] = _format_published(n.get("published_at") or "")
@@ -129,6 +163,15 @@ async def coin_detail(
             "coin": coin,
             "price": snapshot.prices.get(coingecko_id),
             "stale": snapshot.stale,
+            # market: None nếu CoinGecko lỗi/không có dữ liệu — mỗi field template tự
+            # hiện "—" (graceful, không phải lỗi to)
+            "change_24h_pct": market["change_24h_pct"] if market else None,
+            "market_cap": market["market_cap"] if market else None,
+            "volume_24h": market["volume_24h"] if market else None,
+            "circulating_supply": market["circulating_supply"] if market else None,
+            "market_cap_rank": market["market_cap_rank"] if market else None,
+            "ath": market["ath"] if market else None,
+            "max_supply": market["max_supply"] if market else None,
             "days": days,
             "days_choices": _OHLC_DAYS_CHOICES,
             "ohlc": ohlc,
@@ -136,6 +179,9 @@ async def coin_detail(
             # hỏi adapter (không đọc settings trực tiếp) để test override được;
             # CoinTelegraph RSS không cần key → luôn True, giữ cờ cho adapter tương lai
             "news_configured": news_service.adapter.is_configured,
+            # None nếu coin không nằm trong danh sách map — template ẩn WebSocket,
+            # hiện "không có dữ liệu live" thay vì cố mở kết nối tới cặp không tồn tại
+            "binance_pair": BINANCE_PAIRS.get(coingecko_id),
         },
     )
 

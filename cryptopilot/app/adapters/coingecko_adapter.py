@@ -110,6 +110,39 @@ class CoinGeckoAdapter(MarketDataInterface):
             if isinstance(r, (list, tuple)) and len(r) >= 5
         ]
 
+    async def get_coin_market_data(self, coingecko_id: str) -> dict | None:
+        data = await self._get(
+            f"/coins/{coingecko_id}",
+            {
+                "localization": "false",
+                "tickers": "false",
+                "market_data": "true",
+                "community_data": "false",
+                "developer_data": "false",
+                "sparkline": "false",
+            },
+        )
+        market = data.get("market_data") if isinstance(data, dict) else None
+        if not isinstance(market, dict):
+            return None
+        price = (market.get("current_price") or {}).get("usd")
+        if price is None:
+            return None
+
+        def _f(v: Any) -> float | None:
+            return float(v) if v is not None else None
+
+        return {
+            "price": float(price),
+            "change_24h_pct": _f(market.get("price_change_percentage_24h")),
+            "market_cap": _f((market.get("market_cap") or {}).get("usd")),
+            "volume_24h": _f((market.get("total_volume") or {}).get("usd")),
+            "circulating_supply": _f(market.get("circulating_supply")),
+            "market_cap_rank": market.get("market_cap_rank"),
+            "ath": _f((market.get("ath") or {}).get("usd")),
+            "max_supply": _f(market.get("max_supply")),
+        }
+
     async def get_coin_list(self) -> list[dict]:
         data = await self._get("/coins/list")
         rows = data if isinstance(data, list) else []

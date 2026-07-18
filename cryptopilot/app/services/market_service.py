@@ -38,11 +38,16 @@ _price_cache: dict[str, tuple[float, float]] = {}
 # Cache OHLC cho trang chi tiết coin: { (coingecko_id, days): (rows, fetched_at) }
 _ohlc_cache: dict[tuple[str, int], tuple[list[dict], float]] = {}
 
+# Cache market data (giá/%24h/market cap/volume/supply/rank/ath) cho trang chi tiết
+# coin: { coingecko_id: (result, fetched_at) }
+_market_data_cache: dict[str, tuple[dict, float]] = {}
+
 
 def _clear_price_cache() -> None:
     """Tiện cho test — xóa cache giữa các test case."""
     _price_cache.clear()
     _ohlc_cache.clear()
+    _market_data_cache.clear()
 
 
 class MarketService:
@@ -169,6 +174,24 @@ class MarketService:
             return []
         _ohlc_cache[key] = (rows, time.monotonic())
         return rows
+
+    async def get_coin_market_data(self, coingecko_id: str) -> dict | None:
+        """Giá + %24h + market cap/volume/supply/rank/ath cho trang chi tiết coin —
+        1 request CoinGecko, TTL cache như giá.
+
+        Trả None khi CoinGecko lỗi/không có dữ liệu (graceful) — template tự hiện "—".
+        """
+        cached = _market_data_cache.get(coingecko_id)
+        if cached and (time.monotonic() - cached[1]) < _CACHE_TTL:
+            return cached[0]
+        try:
+            result = await self.adapter.get_coin_market_data(coingecko_id)
+        except Exception as exc:  # noqa: BLE001 — graceful degradation như get_history
+            logger.warning("CoinGecko market data lỗi (%s): %s", coingecko_id, exc)
+            return None
+        if result is not None:
+            _market_data_cache[coingecko_id] = (result, time.monotonic())
+        return result
 
     def get_coin(self, coingecko_id: str) -> Coin | None:
         """Tra bản ghi Coin local theo coingecko_id (name/symbol/image cho trang chi tiết)."""

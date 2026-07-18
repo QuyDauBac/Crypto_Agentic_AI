@@ -70,6 +70,20 @@ class FakeAdapter(MarketDataInterface):
         self.raise_on_prices = False
         self.ohlc_calls = 0
         self.raise_on_ohlc = False
+        self.market_data_calls = 0
+        self.raise_on_market_data = False
+        self.market_data = {
+            "bitcoin": {
+                "price": 67000.0,
+                "change_24h_pct": 2.5,
+                "market_cap": 1_320_000_000_000.0,
+                "volume_24h": 28_500_000_000.0,
+                "circulating_supply": 19_800_000.0,
+                "market_cap_rank": 1,
+                "ath": 108_000.0,
+                "max_supply": 21_000_000.0,
+            }
+        }
 
     async def get_prices(self, coingecko_ids):
         self.price_calls += 1
@@ -106,6 +120,12 @@ class FakeAdapter(MarketDataInterface):
                 "close": 105.0,
             }
         ]
+
+    async def get_coin_market_data(self, coingecko_id):
+        self.market_data_calls += 1
+        if self.raise_on_market_data:
+            raise httpx.ConnectTimeout("boom")
+        return self.market_data.get(coingecko_id)
 
 
 # ──────────────────────────── Adapter ────────────────────────────
@@ -306,6 +326,101 @@ def test_service_ohlc_graceful_returns_empty_on_error(db):
     assert asyncio.run(svc.get_coin_ohlc("bitcoin", 30)) == []
 
 
+# ──────────────────────────── Market data (giá/%24h/stats — trang chi tiết) ────────────────────────────
+def test_adapter_market_data_normalizes():
+    def handler(request):
+        assert request.url.path.endswith("/coins/bitcoin")
+        assert request.url.params["market_data"] == "true"
+        return httpx.Response(
+            200,
+            json={
+                "market_data": {
+                    "current_price": {"usd": 67420.5},
+                    "price_change_percentage_24h": 2.317,
+                    "market_cap": {"usd": 1_320_000_000_000},
+                    "total_volume": {"usd": 28_500_000_000},
+                    "circulating_supply": 19_800_000,
+                    "market_cap_rank": 1,
+                    "ath": {"usd": 108_000},
+                    "max_supply": 21_000_000,
+                }
+            },
+        )
+
+    result = asyncio.run(make_adapter(handler).get_coin_market_data("bitcoin"))
+    assert result == {
+        "price": 67420.5,
+        "change_24h_pct": 2.317,
+        "market_cap": 1_320_000_000_000.0,
+        "volume_24h": 28_500_000_000.0,
+        "circulating_supply": 19_800_000.0,
+        "market_cap_rank": 1,
+        "ath": 108_000.0,
+        "max_supply": 21_000_000.0,
+    }
+
+
+def test_adapter_market_data_missing_coin_returns_none():
+    def handler(request):
+        return httpx.Response(200, json={})
+
+    assert asyncio.run(make_adapter(handler).get_coin_market_data("bitcoin")) is None
+
+
+def test_adapter_market_data_handles_null_optional_fields():
+    """max_supply=null (coin không giới hạn nguồn cung, vd ETH) → None chứ không lỗi."""
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "market_data": {
+                    "current_price": {"usd": 3500.0},
+                    "price_change_percentage_24h": None,
+                    "market_cap": {"usd": 420_000_000_000},
+                    "total_volume": {"usd": 12_000_000_000},
+                    "circulating_supply": 120_000_000,
+                    "market_cap_rank": 2,
+                    "ath": {"usd": 4_878.26},
+                    "max_supply": None,
+                }
+            },
+        )
+
+    result = asyncio.run(make_adapter(handler).get_coin_market_data("ethereum"))
+    assert result["change_24h_pct"] is None
+    assert result["max_supply"] is None
+    assert result["market_cap_rank"] == 2
+
+
+def test_service_market_data_caches_within_ttl(db):
+    adapter = FakeAdapter()
+    svc = MarketService(db, adapter)
+    r1 = asyncio.run(svc.get_coin_market_data("bitcoin"))
+    r2 = asyncio.run(svc.get_coin_market_data("bitcoin"))
+    assert r1 == r2 == adapter.market_data["bitcoin"]
+    assert adapter.market_data_calls == 1  # lần 2 lấy từ cache
+
+
+def test_service_market_data_graceful_returns_none_on_error(db):
+    adapter = FakeAdapter()
+    adapter.raise_on_market_data = True
+    svc = MarketService(db, adapter)
+    assert asyncio.run(svc.get_coin_market_data("bitcoin")) is None
+
+
+def test_service_market_data_none_result_not_cached(db):
+    """Coin CoinGecko không có dữ liệu (None) — không cache None, lần sau vẫn gọi lại
+    (khác với lỗi mạng: None ở đây là dữ liệu có thật, không phải graceful degradation,
+    nhưng vẫn không nên cache "không có" mãi vì có thể là do coin_id gõ sai/tạm thời)."""
+    adapter = FakeAdapter()
+    adapter.market_data = {}  # không có bitcoin
+    svc = MarketService(db, adapter)
+    asyncio.run(svc.get_coin_market_data("bitcoin"))
+    asyncio.run(svc.get_coin_market_data("bitcoin"))
+    assert adapter.market_data_calls == 2  # không cache kết quả None
+
+
 # ──────────────────────────── News cho 1 coin ────────────────────────────
 class FakeNewsAdapter:
     """Giả NewsDataInterface — bắt lại tham số currencies để assert mapping tên coin."""
@@ -392,8 +507,12 @@ def test_get_filtered_caches_within_ttl(db):
     portfolio.add_transaction(
         1,
         TransactionCreate(
-            coingecko_id="bitcoin", symbol="btc", name="Bitcoin", type="buy",
-            quantity=Decimal("1"), price=Decimal("100"),
+            coingecko_id="bitcoin",
+            symbol="btc",
+            name="Bitcoin",
+            type="buy",
+            quantity=Decimal("1"),
+            price=Decimal("100"),
             executed_at=datetime(2026, 1, 1),
         ),
     )
@@ -464,9 +583,7 @@ def test_route_coin_detail_shows_news_cards(db):
 
 
 def test_route_coin_detail_unknown_coin_404(db):
-    client = TestClient(
-        _app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter())
-    )
+    client = TestClient(_app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter()))
     # FakeAdapter search luôn trả bitcoin → id lạ vẫn không có trong bảng → 404
     r = client.get("/market/coin/khong-ton-tai")
     assert r.status_code == 404
@@ -475,13 +592,94 @@ def test_route_coin_detail_unknown_coin_404(db):
 def test_route_coin_detail_invalid_days_falls_back_to_default(db):
     db.add(Coin(coingecko_id="bitcoin", symbol="btc", name="Bitcoin"))
     db.commit()
-    client = TestClient(
-        _app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter())
-    )
+    client = TestClient(_app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter()))
     r = client.get("/market/coin/bitcoin?days=999")
     assert r.status_code == 200
     # nút 30D active (rơi về default), không phải 999
     assert "?days=30" in r.text
+
+
+def test_route_coin_detail_timeframe_labels_use_short_names(db):
+    db.add(Coin(coingecko_id="bitcoin", symbol="btc", name="Bitcoin"))
+    db.commit()
+    client = TestClient(_app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter()))
+    r = client.get("/market/coin/bitcoin")
+    assert r.status_code == 200
+    for label in (">1D<", ">1W<", ">1M<", ">3M<", ">1Y<"):
+        assert label in r.text
+
+
+def test_route_coin_detail_shows_24h_change_badge(db):
+    db.add(Coin(coingecko_id="bitcoin", symbol="btc", name="Bitcoin"))
+    db.commit()
+    client = TestClient(_app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter()))
+    r = client.get("/market/coin/bitcoin")
+    assert r.status_code == 200
+    assert 'id="cp-change-24h"' in r.text
+    assert (
+        "+2.50%" in r.text
+    )  # FakeAdapter.market_data["bitcoin"]["change_24h_pct"] = 2.5
+
+
+def test_route_coin_detail_shows_market_stats(db):
+    db.add(Coin(coingecko_id="bitcoin", symbol="btc", name="Bitcoin"))
+    db.commit()
+    client = TestClient(_app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter()))
+    r = client.get("/market/coin/bitcoin")
+    assert r.status_code == 200
+    assert "Market Stats" in r.text
+    assert "Market Cap" in r.text and "$1.32T" in r.text
+    assert "Volume 24h" in r.text and "$28.50B" in r.text
+    assert "Circulating Supply" in r.text and "19.80M" in r.text
+    assert "Market Rank" in r.text and "#1" in r.text
+    assert "All-Time High" in r.text and "$108,000" in r.text
+    assert "Max Supply" in r.text and "21.00M" in r.text
+
+
+def test_route_coin_detail_market_stats_dash_when_data_unavailable(db):
+    db.add(Coin(coingecko_id="bitcoin", symbol="btc", name="Bitcoin"))
+    db.commit()
+    adapter = FakeAdapter()
+    adapter.market_data = {}  # CoinGecko không trả gì cho coin này
+    client = TestClient(_app_with_coin_detail(db, adapter, FakeNewsAdapter()))
+    r = client.get("/market/coin/bitcoin")
+    assert r.status_code == 200
+    # 6 stat đều rơi về "—", không lỗi/không trống trơn
+    assert r.text.count(">—<") >= 6 or "—" in r.text
+
+
+def test_route_coin_detail_binance_mapped_coin_opens_live_widget(db):
+    db.add(Coin(coingecko_id="bitcoin", symbol="btc", name="Bitcoin"))
+    db.commit()
+    client = TestClient(_app_with_coin_detail(db, FakeAdapter(), FakeNewsAdapter()))
+    r = client.get("/market/coin/bitcoin")
+    assert r.status_code == 200
+    assert "stream.binance.com" in r.text
+    assert '"BTCUSDT"' in r.text
+    assert "Không có dữ liệu live" not in r.text
+
+
+def test_route_coin_detail_unmapped_coin_shows_no_live_note(db):
+    # coin có thật trong bảng local nhưng KHÔNG nằm trong BINANCE_PAIRS
+    db.add(Coin(coingecko_id="some-obscure-coin", symbol="obs", name="Obscure Coin"))
+    db.commit()
+
+    class _ObscureAdapter(FakeAdapter):
+        async def search_coins(self, query):
+            return [
+                {
+                    "coingecko_id": "some-obscure-coin",
+                    "symbol": "obs",
+                    "name": "Obscure Coin",
+                    "image_url": None,
+                }
+            ]
+
+    client = TestClient(_app_with_coin_detail(db, _ObscureAdapter(), FakeNewsAdapter()))
+    r = client.get("/market/coin/some-obscure-coin")
+    assert r.status_code == 200
+    assert "Không có dữ liệu live cho coin này" in r.text
+    assert "stream.binance.com" not in r.text
 
 
 # ──────────────────────────── CoinTelegraphAdapter (RSS) ────────────────────────────

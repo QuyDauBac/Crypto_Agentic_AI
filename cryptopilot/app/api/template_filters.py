@@ -33,6 +33,33 @@ def _pct(value, decimals=2):
     return f"{float(value):+.{decimals}f}%"
 
 
+_COMPACT_UNITS = (
+    (1_000_000_000_000, "T"),
+    (1_000_000_000, "B"),
+    (1_000_000, "M"),
+    (1_000, "K"),
+)
+
+
+def _compact_number(value, decimals=2):
+    """1_320_000_000_000 → '1.32T'. None → '—'. Dùng cho Market Cap/Volume/Supply."""
+    if value is None:
+        return "—"
+    v = float(value)
+    sign = "-" if v < 0 else ""
+    v = abs(v)
+    for threshold, suffix in _COMPACT_UNITS:
+        if v >= threshold:
+            return f"{sign}{v / threshold:.{decimals}f}{suffix}"
+    return f"{sign}{v:,.{decimals}f}"
+
+
+def _compact_usd(value, decimals=2):
+    if value is None:
+        return "—"
+    return f"${_compact_number(value, decimals)}"
+
+
 def _coin_color(symbol):
     palette = [
         "#f7931a",
@@ -55,4 +82,6 @@ def register(env: Environment) -> None:
     env.filters["usd_signed"] = _usd_signed
     env.filters["qty"] = _qty
     env.filters["pct"] = _pct
+    env.filters["compact_number"] = _compact_number
+    env.filters["compact_usd"] = _compact_usd
     env.globals["coin_color"] = _coin_color
