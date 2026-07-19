@@ -13,6 +13,7 @@ Khai báo `async def` vì có await gọi CoinGecko (external API). Phần DB (q
 sync nhưng nhẹ, chấp nhận được trong scope đồ án.
 """
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.adapters.coingecko_adapter import CoinGeckoAdapter
 from app.adapters.cointelegraph_adapter import CoinTelegraphAdapter
+from app.api import deps
 from app.api.template_filters import register as register_template_filters
 from app.core.database import get_db
 from app.schemas.market import CoinResult, PriceSnapshot
@@ -52,7 +54,9 @@ async def market_page(
     request: Request,
     q: str | None = Query(default=None, description="Từ khóa tìm coin"),
     service: MarketService = Depends(get_market_service),
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    user = deps.get_current_user_optional(request, db)
     results: list[CoinResult] = []
     snapshot: PriceSnapshot | None = None
     if q:
@@ -60,14 +64,26 @@ async def market_page(
         ids = [c.coingecko_id for c in results[:15]]  # giới hạn để nhẹ rate limit
         if ids:
             snapshot = await service.get_prices(ids)
+
+    # Chỉ gọi trending/top market cap khi chưa tìm gì — đỡ tốn API call lúc đang search
+    trending: list[dict] = []
+    top_cap: list[dict] = []
+    if not q:
+        trending, top_cap = await asyncio.gather(
+            service.get_trending(), service.get_top_market_cap(limit=6)
+        )
+
     return templates.TemplateResponse(
         request,
         "market/search.html",
         {
+            "user": user,
             "q": q or "",
             "results": results[:15],
             "prices": snapshot.prices if snapshot else {},
             "stale": snapshot.stale if snapshot else False,
+            "trending": trending,
+            "top_cap": top_cap,
         },
     )
 
@@ -137,7 +153,9 @@ async def coin_detail(
     days: int = Query(default=_OHLC_DEFAULT_DAYS),
     service: MarketService = Depends(get_market_service),
     news_service: NewsService = Depends(get_news_service),
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    user = deps.get_current_user_optional(request, db)
     if days not in _OHLC_DAYS_CHOICES:
         days = _OHLC_DEFAULT_DAYS
 
@@ -160,6 +178,7 @@ async def coin_detail(
         request,
         "market/coin_detail.html",
         {
+            "user": user,
             "coin": coin,
             "price": snapshot.prices.get(coingecko_id),
             "stale": snapshot.stale,

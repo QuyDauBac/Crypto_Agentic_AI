@@ -31,6 +31,8 @@ logger = logging.getLogger("cryptopilot.market")
 # bằng MARKET_CACHE_TTL_SECONDS mà không sửa code.
 _CACHE_TTL = int(getattr(settings, "MARKET_CACHE_TTL_SECONDS", 60))
 
+_TRENDING_TTL = 300  # 5 phút — trending/top-cap không cần mới như giá live
+
 # Cache RAM mức process: { coingecko_id: (price_usd, fetched_at_epoch) }
 # Đơn process (uvicorn 1 worker cho scope đồ án) nên dict module-level là đủ.
 _price_cache: dict[str, tuple[float, float]] = {}
@@ -42,12 +44,19 @@ _ohlc_cache: dict[tuple[str, int], tuple[list[dict], float]] = {}
 # coin: { coingecko_id: (result, fetched_at) }
 _market_data_cache: dict[str, tuple[dict, float]] = {}
 
+# Cache trending / top market cap cho trang /market khi chưa tìm gì: (rows, fetched_at)
+_trending_cache: tuple[list[dict], float] | None = None
+_top_cap_cache: tuple[list[dict], float] | None = None
+
 
 def _clear_price_cache() -> None:
     """Tiện cho test — xóa cache giữa các test case."""
+    global _trending_cache, _top_cap_cache
     _price_cache.clear()
     _ohlc_cache.clear()
     _market_data_cache.clear()
+    _trending_cache = None
+    _top_cap_cache = None
 
 
 class MarketService:
@@ -192,6 +201,32 @@ class MarketService:
         if result is not None:
             _market_data_cache[coingecko_id] = (result, time.monotonic())
         return result
+
+    async def get_trending(self) -> list[dict]:
+        """Top coin thịnh hành, TTL cache như giá — graceful degradation."""
+        global _trending_cache
+        if _trending_cache and (time.monotonic() - _trending_cache[1]) < _TRENDING_TTL:
+            return _trending_cache[0]
+        try:
+            rows = await self.adapter.get_trending()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("CoinGecko trending lỗi: %s", exc)
+            return _trending_cache[0] if _trending_cache else []
+        _trending_cache = (rows, time.monotonic())
+        return rows
+
+    async def get_top_market_cap(self, limit: int = 6) -> list[dict]:
+        """Top coin theo vốn hoá, TTL cache như giá — graceful degradation."""
+        global _top_cap_cache
+        if _top_cap_cache and (time.monotonic() - _top_cap_cache[1]) < _TRENDING_TTL:
+            return _top_cap_cache[0]
+        try:
+            rows = await self.adapter.get_top_market_cap(limit)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("CoinGecko top market cap lỗi: %s", exc)
+            return _top_cap_cache[0] if _top_cap_cache else []
+        _top_cap_cache = (rows, time.monotonic())
+        return rows
 
     def get_coin(self, coingecko_id: str) -> Coin | None:
         """Tra bản ghi Coin local theo coingecko_id (name/symbol/image cho trang chi tiết)."""

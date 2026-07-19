@@ -1,81 +1,307 @@
+{# templates/market/search.html — GET /market?q=
+   Context (app/api/market.py::market_page): q (str), results (list[CoinResult]),
+   prices (dict[str,float]), stale (bool), trending (list[dict]), top_cap (list[dict])
+
+   Giao diện port từ Claude Design (mesh gradient WebGL shader teal/indigo/amber,
+   glass box KHÔNG backdrop-filter — theo yêu cầu "kính trong suốt thật", không kính
+   mờ sương). CHỈ lấy CSS/layout/shader — KHÔNG lấy state/JS demo (coin mẫu, giá
+   random) của bản thiết kế gốc.
+
+   Icon coin dùng filter coin_color có sẵn (template_filters.py) — chữ cái đầu
+   symbol trên nền màu, đồng bộ cho cả trending/top_cap/results, không phụ thuộc
+   image_url load được hay không.
+
+   Dòng kết quả search KHÔNG hiện badge %24h — có chủ đích: get_prices() hiện chỉ
+   trả giá, không trả change_24h_pct cho batch tuỳ ý; chỉ trending/top_cap có vì
+   gọi endpoint CoinGecko riêng (/search/trending, /coins/markets) sẵn field này.
+#}
 {% extends "base.html" %}
+
 {% block title %}Tìm coin & giá — CryptoPilot{% endblock %}
+
+{% block extra_css %}
+<style>
+  .mkt-bg-canvas, .mkt-grain, .mkt-vignette { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; }
+  .mkt-bg-canvas { display: block; }
+  .mkt-grain { pointer-events: none; opacity: .32; mix-blend-mode: overlay; }
+  .mkt-vignette { pointer-events: none; background: radial-gradient(ellipse 92% 74% at 50% 2%, transparent, rgba(5,5,7,.5) 66%, #050507 100%); }
+
+  .mkt-main { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: clamp(48px,8vw,88px) max(20px,4vw) 72px; }
+  .mkt-eyebrow { text-align: center; font-size: 12px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #7dd3c0; margin-bottom: 16px; }
+  .mkt-title { text-align: center; margin: 0; font-size: clamp(34px,6vw,54px); line-height: 1.05; font-weight: 700; letter-spacing: -.03em; color: #f5f5f7; }
+  .mkt-sub { text-align: center; margin: 16px auto 0; max-width: 440px; font-size: 16px; line-height: 1.5; color: rgba(245,245,247,.6); }
+
+  /* Glass — KHÔNG backdrop-filter, chỉ nền mờ + viền + shadow ("kính trong suốt thật") */
+  .mkt-glass { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.1); box-shadow: 0 22px 56px -26px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.05); }
+  .mkt-row { transition: transform .18s ease, border-color .18s ease, background .18s ease; }
+  .mkt-row:hover { transform: translateY(-2px); border-color: rgba(200,182,255,.4); background: rgba(255,255,255,.075); }
+
+  form.mkt-search { margin-top: clamp(28px,4vw,40px); display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 20px; border-radius: 999px; }
+  form.mkt-search input { flex: 1; min-width: 0; background: transparent; border: none; color: #f5f5f7; font-size: clamp(15px,2vw,17px); font-family: inherit; padding: 12px 0; }
+  .mkt-clear { flex: none; width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(255,255,255,.07); color: rgba(245,245,247,.7); cursor: pointer; font-size: 16px; }
+  .mkt-submit { flex: none; padding: 12px 26px; border: none; border-radius: 999px; font-size: 15px; font-weight: 600; font-family: inherit; color: #050507; cursor: pointer; background: linear-gradient(135deg,#14b8a6,#6366f1 55%,#fbbf24); box-shadow: 0 8px 24px -8px rgba(99,102,241,.7); }
+  .mkt-submit:hover { filter: brightness(1.08); }
+
+  .mkt-stale { margin-top: 20px; display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border-radius: 16px; background: rgba(245,180,80,.09); border: 1px solid rgba(245,180,80,.24); }
+
+  .mkt-section-head { display: flex; align-items: baseline; gap: 10px; margin: 32px 0 16px; }
+  .mkt-section-head:first-of-type { margin-top: clamp(36px,5vw,52px); }
+  .mkt-section-head h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: #f5f5f7; }
+  .mkt-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(230px,1fr)); gap: 12px; }
+
+  .mkt-card, .mkt-result-row { display: flex; align-items: center; gap: 12px; border-radius: 18px; text-decoration: none; color: inherit; }
+  .mkt-card { padding: 14px 16px; }
+  .mkt-avatar { flex: none; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #050507; }
+  .mkt-name { display: block; font-size: 14px; font-weight: 600; letter-spacing: -.01em; color: #f5f5f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mkt-symbol { display: block; font-size: 11.5px; color: rgba(245,245,247,.42); }
+  .mkt-price-sm { display: block; font-size: 13.5px; font-weight: 600; font-family: ui-monospace,'SF Mono',Menlo,monospace; color: #f5f5f7; }
+  .mkt-up { color: #34d399; } .mkt-down { color: #f8698a; }
+
+  .mkt-result-row { padding: 16px 20px; gap: 16px; border-radius: 20px; }
+  .mkt-result-row .mkt-avatar { width: 44px; height: 44px; font-size: 11px; }
+  .mkt-name-wrap { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .mkt-name-lg { font-size: 16px; font-weight: 600; color: #f5f5f7; }
+  .mkt-symbol-badge { font-size: 11px; font-weight: 600; letter-spacing: .02em; color: rgba(245,245,247,.6); padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.08); }
+  .mkt-price-lg { min-width: 104px; text-align: right; font-size: 17px; font-weight: 700; font-family: ui-monospace,'SF Mono',Menlo,monospace; color: #f5f5f7; }
+  .mkt-result-count { font-size: 13px; color: rgba(245,245,247,.5); margin: 0 4px 14px; }
+
+  .mkt-empty { margin-top: 36px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; padding: 52px 24px; border-radius: 22px; }
+  .mkt-empty-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.09); }
+  .mkt-empty-title { font-size: 17px; font-weight: 600; color: #f5f5f7; }
+  .mkt-empty-sub { font-size: 14px; color: rgba(245,245,247,.5); margin-top: 6px; }
+
+  .mkt-footer { margin-top: 36px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px; color: rgba(245,245,247,.42); }
+  .mkt-pulse { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px #34d399; animation: mktPulse 2.4s ease-in-out infinite; }
+  @keyframes mktPulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } 100% { opacity: 1; transform: scale(1); } }
+  @keyframes mktRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .mkt-rise { animation: mktRise .5s ease both; }
+  @media (prefers-reduced-motion: reduce) { .mkt-rise, .mkt-pulse { animation: none !important; } }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-lg-9">
+<canvas id="mkt-bg-canvas" class="mkt-bg-canvas"></canvas>
+<svg class="mkt-grain" xmlns="http://www.w3.org/2000/svg">
+  <filter id="mktGrain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"></feTurbulence></filter>
+  <rect width="100%" height="100%" filter="url(#mktGrain)"></rect>
+</svg>
+<div class="mkt-vignette"></div>
 
-    <h3 class="mb-3">🔍 Tìm coin &amp; giá real-time</h3>
-
-    <form method="get" action="/market" class="mb-4">
-      <div class="input-group input-group-lg">
-        <input type="text" name="q" value="{{ q }}" class="form-control"
-               placeholder="Nhập tên hoặc symbol (bitcoin, eth, sol...)" autofocus>
-        <button class="btn btn-primary" type="submit">Tìm</button>
-      </div>
-    </form>
-
-    {% if stale %}
-    <div class="alert alert-warning py-2" role="alert">
-      ⚠️ Không lấy được giá mới từ CoinGecko — đang hiển thị <strong>dữ liệu cũ</strong> (cache).
-    </div>
-    {% endif %}
-
-    {% if q and not results %}
-    <div class="alert alert-secondary">Không tìm thấy coin nào khớp "<strong>{{ q }}</strong>".</div>
-    {% endif %}
-
-    {% if results %}
-    <div class="cp-card">
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-          <thead>
-            <tr>
-              <th>Coin</th>
-              <th>Symbol</th>
-              <th class="text-end">Giá (USD)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for coin in results %}
-            <tr>
-              <td>
-                <a href="/market/coin/{{ coin.coingecko_id }}" class="text-decoration-none"
-                   style="color:inherit" title="Xem biểu đồ nến + tin tức {{ coin.name }}">
-                  {% if coin.image_url %}
-                  <img src="{{ coin.image_url }}" alt="" width="22" height="22" class="me-2 rounded-circle">
-                  {% endif %}
-                  {{ coin.name }}
-                  <span class="cp-text-secondary small ms-1">📈</span>
-                </a>
-              </td>
-              <td><span class="badge bg-secondary text-uppercase">{{ coin.symbol }}</span></td>
-              <td class="text-end fw-semibold price-cell" data-coin-id="{{ coin.coingecko_id }}">
-                {% if prices.get(coin.coingecko_id) is not none %}
-                  ${{ '%.4f'|format(prices[coin.coingecko_id]) }}
-                {% else %}
-                  <span class="cp-text-muted">—</span>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <p class="cp-text-secondary small mt-2 mb-0">
-      Giá tự cập nhật mỗi 30 giây · nguồn: CoinGecko
-      <span id="last-updated"></span>
-    </p>
-    {% endif %}
-
+<main class="mkt-main">
+  <div class="mkt-rise">
+    <div class="mkt-eyebrow">Thị trường</div>
+    <h1 class="mkt-title">Tìm kiếm &amp; giá coin</h1>
+    <p class="mkt-sub">Tra cứu giá thời gian thực của hàng nghìn đồng coin, cập nhật liên tục.</p>
   </div>
-</div>
 
-{% if results %}
+  <form class="mkt-search mkt-glass" method="get" action="/market">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex:none;color:rgba(245,245,247,.55)">
+      <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/>
+      <path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <input type="text" name="q" value="{{ q }}" placeholder="Nhập tên hoặc symbol (bitcoin, eth, sol...)" autofocus>
+    {% if q %}
+    <button type="submit" name="q" value="" class="mkt-clear" aria-label="Xoá">✕</button>
+    {% endif %}
+    <button type="submit" class="mkt-submit">Tìm</button>
+  </form>
+
+  {% if stale %}
+  <div class="mkt-stale mkt-glass">
+    <span style="font-size:16px;line-height:1.3">⚠️</span>
+    <div style="font-size:13.5px;line-height:1.45;color:#f4d29a"><strong style="color:#f7dca8;font-weight:600">Dữ liệu cũ</strong> — không thể kết nối tới nguồn giá. Đang hiển thị mức giá gần nhất đã lưu.</div>
+  </div>
+  {% endif %}
+
+  {% if not q %}
+  <div class="mkt-rise">
+    {% if trending %}
+    <div class="mkt-section-head"><span style="font-size:16px">🔥</span><h2>Đang thịnh hành</h2></div>
+    <div class="mkt-grid">
+      {% for coin in trending %}
+      <a href="/market/coin/{{ coin.coingecko_id }}" class="mkt-card mkt-glass mkt-row">
+        <span class="mkt-avatar" style="background:{{ coin.symbol | coin_color }}">{{ coin.symbol[:4]|upper }}</span>
+        <span style="flex:1;min-width:0">
+          <span class="mkt-name">{{ coin.name }}</span>
+          <span class="mkt-symbol">{{ coin.symbol|upper }}</span>
+        </span>
+        <span style="flex:none;text-align:right">
+          <span class="mkt-price-sm">{{ coin.price | price_usd }}</span>
+          {% if coin.change_24h_pct is not none %}
+          <span class="{{ 'mkt-up' if coin.change_24h_pct >= 0 else 'mkt-down' }}" style="display:block;font-size:11.5px;font-weight:600;font-family:ui-monospace,Menlo,monospace">{{ coin.change_24h_pct | pct }}</span>
+          {% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if top_cap %}
+    <div class="mkt-section-head"><span style="font-size:15px">💎</span><h2>Vốn hoá lớn nhất</h2></div>
+    <div class="mkt-grid">
+      {% for coin in top_cap %}
+      <a href="/market/coin/{{ coin.coingecko_id }}" class="mkt-card mkt-glass mkt-row">
+        <span class="mkt-avatar" style="background:{{ coin.symbol | coin_color }}">{{ coin.symbol[:4]|upper }}</span>
+        <span style="flex:1;min-width:0">
+          <span class="mkt-name">{{ coin.name }}</span>
+          <span class="mkt-symbol">{{ coin.symbol|upper }}</span>
+        </span>
+        <span style="flex:none;text-align:right">
+          <span class="mkt-price-sm">{{ coin.price | price_usd }}</span>
+          {% if coin.change_24h_pct is not none %}
+          <span class="{{ 'mkt-up' if coin.change_24h_pct >= 0 else 'mkt-down' }}" style="display:block;font-size:11.5px;font-weight:600;font-family:ui-monospace,Menlo,monospace">{{ coin.change_24h_pct | pct }}</span>
+          {% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not trending and not top_cap %}
+    <p class="mkt-sub" style="margin-top:36px">Không tải được danh sách gợi ý lúc này — thử tìm trực tiếp bằng ô phía trên.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if q and results %}
+  <div class="mkt-rise">
+    <div class="mkt-result-count">{{ results|length }} kết quả cho "{{ q }}"</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      {% for coin in results %}
+      <a href="/market/coin/{{ coin.coingecko_id }}" class="mkt-result-row mkt-glass mkt-row">
+        <span class="mkt-avatar" style="background:{{ coin.symbol | coin_color }}">{{ coin.symbol[:4]|upper }}</span>
+        <span class="mkt-name-wrap">
+          <span class="mkt-name-lg">{{ coin.name }}</span>
+          <span class="mkt-symbol-badge">{{ coin.symbol|upper }}</span>
+        </span>
+        <span class="mkt-price-lg price-cell" data-coin-id="{{ coin.coingecko_id }}">
+          {% if prices.get(coin.coingecko_id) is not none %}{{ prices[coin.coingecko_id] | price_usd }}{% else %}—{% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if q and not results %}
+  <div class="mkt-empty mkt-glass">
+    <div class="mkt-empty-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" style="color:rgba(245,245,247,.55)">
+        <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.7"/>
+        <path d="m20 20-3.5-3.5M8.5 11h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div>
+      <div class="mkt-empty-title">Không tìm thấy coin nào khớp "{{ q }}"</div>
+      <div class="mkt-empty-sub">Thử tìm bằng tên đầy đủ hoặc symbol, ví dụ "bitcoin" hoặc "BTC".</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if results %}
+  <div class="mkt-footer">
+    <span class="mkt-pulse"></span>
+    <span>Giá tự cập nhật mỗi 30 giây · nguồn: CoinGecko <span id="last-updated"></span></span>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}
+
+{% block extra_js %}
 <script>
-  // Poll giá định kỳ để minh họa "real-time" (Phase 2). Gọi JSON endpoint của chính router.
-  const coinIds = [{% for coin in results %}"{{ coin.coingecko_id }}"{% if not loop.last %},{% endif %}{% endfor %}];
+  /* ---------- WebGL mesh shader nền (teal/indigo/amber, FBM domain-warp noise) ---------- */
+  (function () {
+    const canvas = document.getElementById('mkt-bg-canvas');
+    if (!canvas) return;
+    const gl = canvas.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'low-power' });
+    if (!gl) {
+      canvas.style.background = 'radial-gradient(60% 60% at 22% 24%,#14b8a6,transparent 60%),radial-gradient(60% 60% at 82% 30%,#6366f1,transparent 60%),radial-gradient(75% 75% at 50% 105%,#fbbf24,transparent 62%),#050507';
+      return;
+    }
+    const vs = `attribute vec2 p; void main(){ gl_Position = vec4(p,0.0,1.0); }`;
+    const fs = `precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform float uIntensity; uniform float uSpeed;
+vec3 permute(vec3 x){return mod((x*34.0+1.0)*x,289.0);}
+float snoise(vec2 v){
+  const vec4 C=vec4(0.211324865,0.366025404,-0.577350269,0.024390243);
+  vec2 i=floor(v+dot(v,C.yy)); vec2 x0=v-i+dot(i,C.xx);
+  vec2 i1=(x0.x>x0.y)?vec2(1.0,0.0):vec2(0.0,1.0);
+  vec4 x12=x0.xyxy+C.xxzz; x12.xy-=i1;
+  i=mod(i,289.0);
+  vec3 pp=permute(permute(i.y+vec3(0.0,i1.y,1.0))+i.x+vec3(0.0,i1.x,1.0));
+  vec3 m=max(0.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.0);
+  m=m*m; m=m*m;
+  vec3 x=2.0*fract(pp*C.www)-1.0; vec3 h=abs(x)-0.5; vec3 ox=floor(x+0.5); vec3 a0=x-ox;
+  m*=1.79284291-0.85373472*(a0*a0+h*h);
+  vec3 g; g.x=a0.x*x0.x+h.x*x0.y; g.yz=a0.yz*x12.xz+h.yz*x12.yw;
+  return 130.0*dot(m,g);
+}
+float fbm(vec2 p){ float v=0.0,a=0.5; mat2 m=mat2(1.6,1.2,-1.2,1.6); for(int i=0;i<4;i++){ v+=a*snoise(p); p=m*p; a*=0.5;} return v;}
+void main(){
+  vec2 uv=gl_FragCoord.xy/uRes.xy;
+  vec2 p=(uv-0.5)*vec2(uRes.x/uRes.y,1.0)*1.35;
+  float t=uTime*0.05*uSpeed;
+  vec2 q=vec2(fbm(p+vec2(0.0,t)), fbm(p+vec2(5.2,1.3)-vec2(0.0,t)));
+  vec2 r=vec2(fbm(p+2.0*q+vec2(1.7,9.2)+0.12*t), fbm(p+2.0*q+vec2(8.3,2.8)-0.10*t));
+  float f=fbm(p+2.4*r+0.6*t);
+  vec3 base=vec3(0.02,0.02,0.028);
+  vec3 teal=vec3(0.078,0.722,0.651);
+  vec3 indigo=vec3(0.388,0.400,0.945);
+  vec3 amber=vec3(0.984,0.749,0.141);
+  float m1=smoothstep(-0.6,0.7,f);
+  float m2=smoothstep(-0.5,0.8,q.x);
+  float m3=smoothstep(0.15,1.0,r.y);
+  vec3 col=base;
+  col=mix(col,teal,clamp(m2*0.95,0.0,1.0));
+  col=mix(col,indigo,clamp(m1*0.9,0.0,1.0));
+  col=mix(col,amber,clamp(m3-0.35,0.0,1.0)*0.62);
+  col=base+(col-base)*uIntensity;
+  float g=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233))+uTime)*43758.5453);
+  col+=(g-0.5)*0.05;
+  gl_FragColor=vec4(col,1.0);
+}`;
+    function mk(type, src) { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return sh; }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog); gl.useProgram(prog);
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const uRes = gl.getUniformLocation(prog, 'uRes');
+    const uTime = gl.getUniformLocation(prog, 'uTime');
+    const uIntensity = gl.getUniformLocation(prog, 'uIntensity');
+    const uSpeed = gl.getUniformLocation(prog, 'uSpeed');
+    const INTENSITY = 0.85, SPEED = 1;
 
+    function resize() {
+      const scale = Math.min(window.devicePixelRatio || 1, 1.5) * 0.6;
+      const w = Math.max(2, Math.floor(canvas.clientWidth * scale));
+      const h = Math.max(2, Math.floor(canvas.clientHeight * scale));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+        gl.viewport(0, 0, w, h);
+        gl.uniform2f(uRes, w, h);
+      }
+    }
+    const t0 = performance.now();
+    function frame() {
+      const now = (performance.now() - t0) / 1000;
+      resize();
+      gl.uniform1f(uTime, now);
+      gl.uniform1f(uIntensity, INTENSITY);
+      gl.uniform1f(uSpeed, SPEED);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    window.addEventListener('resize', resize);
+  })();
+
+  /* ---------- Poll giá 30s — TÁI DÙNG NGUYÊN logic cũ, KHÔNG viết lại ---------- */
+  {% if results %}
+  const coinIds = [{% for coin in results %}"{{ coin.coingecko_id }}"{% if not loop.last %},{% endif %}{% endfor %}];
   async function refreshPrices() {
     try {
       const res = await fetch(`/market/api/prices?ids=${encodeURIComponent(coinIds.join(","))}`);
@@ -93,8 +319,7 @@
       }
     } catch (e) { /* graceful: lỗi mạng thì giữ giá cũ, không phá trang */ }
   }
-
   setInterval(refreshPrices, 30000);
+  {% endif %}
 </script>
-{% endif %}
 {% endblock %}

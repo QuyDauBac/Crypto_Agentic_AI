@@ -60,6 +60,19 @@ def _compact_usd(value, decimals=2):
     return f"${_compact_number(value, decimals)}"
 
 
+def _price_usd(value):
+    """Giá USD dạng bậc thang: >=$1 → 2 số lẻ có phẩy ngăn nghìn, >=$0.01 → 4 số lẻ,
+    còn lại → 8 số lẻ (để giá rất nhỏ như SHIB không hiện $0.0000)."""
+    if value is None:
+        return "—"
+    v = float(value)
+    if v >= 1:
+        return f"${v:,.2f}"
+    if v >= 0.01:
+        return f"${v:.4f}"
+    return f"${v:.8f}"
+
+
 def _coin_color(symbol):
     palette = [
         "#f7931a",
@@ -84,4 +97,8 @@ def register(env: Environment) -> None:
     env.filters["pct"] = _pct
     env.filters["compact_number"] = _compact_number
     env.filters["compact_usd"] = _compact_usd
+    env.filters["price_usd"] = _price_usd
+    # coin_color đăng ký cả filter (dùng trong search.html: `symbol | coin_color`)
+    # lẫn global (dùng trong các template khác: `coin_color(symbol)`) — cùng một hàm.
+    env.filters["coin_color"] = _coin_color
     env.globals["coin_color"] = _coin_color

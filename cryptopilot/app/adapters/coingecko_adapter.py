@@ -155,3 +155,52 @@ class CoinGeckoAdapter(MarketDataInterface):
             for r in rows
             if r.get("id")
         ]
+
+    async def get_trending(self) -> list[dict]:
+        data = await self._get("/search/trending")
+        coins = data.get("coins", []) if isinstance(data, dict) else []
+        out: list[dict] = []
+        for entry in coins[:6]:
+            item = entry.get("item", {}) if isinstance(entry, dict) else {}
+            if not item.get("id"):
+                continue
+            price_data = item.get("data", {}) or {}
+            change = (price_data.get("price_change_percentage_24h") or {}).get("usd")
+            try:
+                price = float(price_data.get("price") or 0) or None
+            except (TypeError, ValueError):
+                price = None
+            out.append(
+                {
+                    "coingecko_id": item["id"],
+                    "symbol": (item.get("symbol") or "").lower(),
+                    "name": item.get("name"),
+                    "price": price,
+                    "change_24h_pct": float(change) if change is not None else None,
+                }
+            )
+        return out
+
+    async def get_top_market_cap(self, limit: int = 6) -> list[dict]:
+        data = await self._get(
+            "/coins/markets",
+            {
+                "vs_currency": "usd",
+                "order": "market_cap_desc",
+                "per_page": limit,
+                "page": 1,
+                "price_change_percentage": "24h",
+            },
+        )
+        rows = data if isinstance(data, list) else []
+        return [
+            {
+                "coingecko_id": r.get("id"),
+                "symbol": (r.get("symbol") or "").lower(),
+                "name": r.get("name"),
+                "price": r.get("current_price"),
+                "change_24h_pct": r.get("price_change_percentage_24h"),
+            }
+            for r in rows
+            if r.get("id")
+        ]

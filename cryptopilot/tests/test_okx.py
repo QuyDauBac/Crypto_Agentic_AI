@@ -97,6 +97,12 @@ class _NullAdapter(MarketDataInterface):
     async def get_coin_market_data(self, coingecko_id):
         return None
 
+    async def get_trending(self):
+        return []
+
+    async def get_top_market_cap(self, limit=6):
+        return []
+
 
 FILLS_FIXTURE = [
     {

@@ -75,3 +75,21 @@ class MarketDataInterface(ABC):
         Tương đương endpoint /coins/{id} (market_data=true, tickers/community/developer
         data=false để nhẹ response) — gộp 1 request thay vì gọi /simple/price riêng.
         """
+
+    @abstractmethod
+    async def get_trending(self) -> list[dict]:
+        """Top coin đang được tìm kiếm nhiều nhất trên CoinGecko.
+
+        Trả về list dict tối đa 6 phần tử:
+        { "coingecko_id": str, "symbol": str, "name": str,
+          "price": float | None, "change_24h_pct": float | None }.
+        Tương đương endpoint /search/trending.
+        """
+
+    @abstractmethod
+    async def get_top_market_cap(self, limit: int = 6) -> list[dict]:
+        """Top coin theo vốn hoá thị trường.
+
+        Trả về list dict cùng shape với get_trending().
+        Tương đương endpoint /coins/markets (order=market_cap_desc).
+        """

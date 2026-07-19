@@ -127,6 +127,12 @@ class FakeAdapter(MarketDataInterface):
             raise httpx.ConnectTimeout("boom")
         return self.market_data.get(coingecko_id)
 
+    async def get_trending(self):
+        return []
+
+    async def get_top_market_cap(self, limit=6):
+        return []
+
 
 # ──────────────────────────── Adapter ────────────────────────────
 def test_adapter_get_prices_normalizes():

@@ -1,89 +1,276 @@
+{# templates/wallet/index.html — GET /wallet
+   Context (app/api/wallet.py::wallet_page): user, status (OKXStatus), error (str|None),
+   synced (int|None)
+
+   Giao diện port từ Claude Design (WebGL mesh shader Aurora gốc magenta/violet/cyan,
+   glass box KHÔNG backdrop-filter). CHỈ lấy CSS/layout/shader — KHÔNG lấy state demo
+   (mode/banner switcher) của bản thiết kế gốc, thay bằng đúng logic Jinja2 theo
+   status.is_connected / error / synced như route thật.
+
+   Đây là trang nhập API key sàn giao dịch — giữ input Secret Key/Passphrase dạng
+   password, giữ nguyên nội dung hướng dẫn bảo mật, không thêm JS phức tạp ngoài
+   phần shader nền.
+#}
 {% extends "base.html" %}
+
 {% block title %}Ví OKX — CryptoPilot{% endblock %}
+
+{% block extra_css %}
+<style>
+  .wlt-bg-canvas { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; }
+  .wlt-vignette { position: fixed; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(120% 90% at 50% -10%, rgba(5,5,7,0) 30%, rgba(5,5,7,.55) 78%, rgba(5,5,7,.9) 100%); }
+
+  .wlt-main { position: relative; z-index: 2; max-width: 600px; margin: 0 auto; padding: 56px 24px 120px; display: flex; flex-direction: column; gap: 22px; }
+
+  .wlt-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .wlt-title { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 600; letter-spacing: -.02em; color: #f5f5f7; }
+  .wlt-sub { margin: 7px 0 0; font-size: 14.5px; line-height: 1.5; color: rgba(245,245,247,.58); max-width: 400px; }
+  .wlt-back { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; font-size: 13.5px; font-weight: 500; color: rgba(245,245,247,.72); border: 1px solid rgba(255,255,255,.14); border-radius: 11px; background: rgba(255,255,255,.03); white-space: nowrap; transition: border-color .2s, color .2s; text-decoration: none; }
+  .wlt-back:hover { border-color: rgba(255,255,255,.3); color: #fff; }
+
+  /* Glass — KHÔNG backdrop-filter, chỉ nền mờ + viền + shadow */
+  .wlt-card { border-radius: 22px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.11); box-shadow: 0 30px 70px -20px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.09) inset; padding: 30px; }
+  .wlt-card-soft { border-radius: 22px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.1); box-shadow: 0 26px 60px -22px rgba(0,0,0,.65), 0 1px 0 rgba(255,255,255,.07) inset; padding: 26px 28px 28px; }
+
+  .wlt-banner { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; }
+  .wlt-banner.err { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.34); box-shadow: 0 10px 30px -12px rgba(248,113,113,.35); }
+  .wlt-banner.warn { background: rgba(251,146,60,.1); border: 1px solid rgba(251,146,60,.36); box-shadow: 0 10px 30px -12px rgba(251,146,60,.32); }
+  .wlt-banner.ok { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.34); box-shadow: 0 10px 30px -12px rgba(52,211,153,.32); }
+  .wlt-banner p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+  .wlt-banner-dot { flex: none; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; margin-top: 1px; }
+
+  .wlt-logo { flex: none; width: 38px; height: 38px; border-radius: 11px; background: #0b0b0d; border: 1px solid rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; letter-spacing: -.03em; color: #f5f5f7; }
+  .wlt-card h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.01em; color: #f5f5f7; }
+  .wlt-card-hint { margin: 2px 0 0; font-size: 12.5px; color: rgba(245,245,247,.5); }
+
+  .wlt-field { display: flex; flex-direction: column; gap: 7px; }
+  .wlt-field span { font-size: 12.5px; font-weight: 500; color: rgba(245,245,247,.66); letter-spacing: .01em; }
+  .wlt-field input { width: 100%; padding: 13px 15px; font-size: 14.5px; font-family: inherit; color: #f5f5f7; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.13); border-radius: 12px; transition: border-color .18s, background .18s; }
+  .wlt-field input:focus { border-color: rgba(233,53,193,.55); background: rgba(255,255,255,.06); }
+  .wlt-field input[type="password"] { letter-spacing: .06em; }
+
+  .wlt-btn-primary { width: 100%; padding: 15px; font-size: 15px; font-weight: 600; font-family: inherit; color: #fff; border: none; border-radius: 13px; cursor: pointer; background: linear-gradient(100deg,#e935c1 0%,#8b5cf6 52%,#22d3ee 100%); box-shadow: 0 14px 34px -10px rgba(139,92,246,.6), 0 1px 0 rgba(255,255,255,.25) inset; transition: transform .16s, box-shadow .16s; letter-spacing: .01em; }
+  .wlt-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 20px 44px -10px rgba(233,53,193,.6), 0 1px 0 rgba(255,255,255,.3) inset; }
+  .wlt-btn-primary:active { transform: translateY(0); }
+
+  .wlt-guide-head { display: flex; align-items: center; gap: 11px; margin-bottom: 18px; }
+  .wlt-guide-head h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; color: #f5f5f7; }
+  .wlt-guide-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  .wlt-guide-list li { display: flex; gap: 14px; align-items: flex-start; }
+  .wlt-guide-num { flex: none; width: 26px; height: 26px; border-radius: 8px; background: rgba(139,92,246,.16); border: 1px solid rgba(139,92,246,.34); color: #c4b5fd; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; margin-top: 1px; }
+  .wlt-guide-list p { margin: 0; font-size: 13.5px; line-height: 1.55; color: rgba(245,245,247,.82); }
+  .wlt-guide-list strong { color: #fff; font-weight: 600; }
+
+  .wlt-connected-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .wlt-connected-id { display: flex; align-items: center; gap: 13px; }
+  .wlt-logo-lg { width: 44px; height: 44px; font-size: 17px; }
+  .wlt-status-pill { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px; background: rgba(52,211,153,.14); border: 1px solid rgba(52,211,153,.42); color: #6ee7b7; font-size: 12.5px; font-weight: 600; }
+  .wlt-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 10px 1px rgba(52,211,153,.8); }
+  .wlt-lastsync { margin-top: 22px; padding: 13px 16px; border-radius: 13px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); font-size: 13px; color: rgba(245,245,247,.68); }
+  .wlt-lastsync strong { color: #f5f5f7; font-weight: 600; }
+  .wlt-lastsync .never { font-style: italic; color: rgba(245,245,247,.5); }
+  .wlt-actions { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+  .wlt-btn-sync { flex: 1; min-width: 170px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 14px; font-size: 14.5px; font-weight: 600; font-family: inherit; color: #fff; border: none; border-radius: 13px; cursor: pointer; background: linear-gradient(100deg,#e935c1 0%,#8b5cf6 52%,#22d3ee 100%); box-shadow: 0 14px 34px -12px rgba(139,92,246,.6), 0 1px 0 rgba(255,255,255,.25) inset; transition: transform .16s, box-shadow .16s; }
+  .wlt-btn-sync:hover { transform: translateY(-1px); box-shadow: 0 20px 44px -12px rgba(233,53,193,.6), 0 1px 0 rgba(255,255,255,.3) inset; }
+  .wlt-btn-disconnect { flex: none; padding: 14px 20px; font-size: 14px; font-weight: 500; font-family: inherit; color: #f87171; border: 1px solid rgba(248,113,113,.4); border-radius: 13px; cursor: pointer; background: rgba(248,113,113,.04); transition: background .18s, border-color .18s; }
+  .wlt-btn-disconnect:hover { background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.6); }
+  .wlt-note { margin: 20px 0 0; font-size: 12.5px; line-height: 1.6; color: rgba(245,245,247,.5); }
+
+  form.wlt-form-inline { margin: 0; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
-    <h3 class="mb-1">🔗 Kết nối ví OKX</h3>
-    <p class="cp-text-secondary small mb-0">Đồng bộ tự động giao dịch từ tài khoản OKX vào danh mục.</p>
-  </div>
-  <a href="/portfolio" class="btn-cp-outline px-3 py-2 text-decoration-none">← Về danh mục</a>
-</div>
+<canvas id="wlt-bg-canvas" class="wlt-bg-canvas"></canvas>
+<div class="wlt-vignette"></div>
 
-{% if error == 'connect' %}
-<div class="alert alert-danger py-2">
-  Không kết nối được — kiểm tra lại API Key/Secret/Passphrase, và đảm bảo đã bật quyền
-  <strong>Read</strong> cho key trên OKX.
-</div>
-{% elif error == 'sync' %}
-<div class="alert alert-danger py-2">Đồng bộ thất bại — OKX từ chối yêu cầu, thử lại sau.</div>
-{% elif error == 'not_connected' %}
-<div class="alert alert-warning py-2">Chưa kết nối ví — hãy kết nối trước khi đồng bộ.</div>
-{% endif %}
-
-{% if synced is not none %}
-<div class="alert alert-success py-2">
-  ✅ Đã đồng bộ xong — {{ synced }} giao dịch mới được thêm vào danh mục.
-</div>
-{% endif %}
-
-{% if status.is_connected %}
-<div class="cp-card p-3 p-md-4 mb-4">
-  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+<main class="wlt-main">
+  <div class="wlt-top">
     <div>
-      <span class="badge bg-success mb-2">Đã kết nối</span>
-      <div class="cp-text-secondary small">
-        Lần đồng bộ gần nhất:
-        {% if status.last_synced_at %}
-          <strong>{{ status.last_synced_at.strftime('%d/%m/%Y %H:%M') }}</strong>
-        {% else %}
-          <span class="fst-italic">chưa đồng bộ lần nào</span>
-        {% endif %}
+      <h1 class="wlt-title">Kết nối ví OKX</h1>
+      <p class="wlt-sub">Đồng bộ lịch sử giao dịch SPOT từ sàn OKX vào CryptoPilot bằng API Key chỉ-đọc.</p>
+    </div>
+    <a href="/portfolio" class="wlt-back">← Về danh mục</a>
+  </div>
+
+  {% if error == 'connect' %}
+  <div class="wlt-banner err">
+    <span class="wlt-banner-dot" style="background:rgba(248,113,113,.2);color:#f87171">!</span>
+    <p style="color:#fecaca"><strong style="color:#fca5a5">Không kết nối được.</strong> Kiểm tra lại API Key / Secret / Passphrase và quyền truy cập trên OKX.</p>
+  </div>
+  {% elif error == 'sync' %}
+  <div class="wlt-banner err">
+    <span class="wlt-banner-dot" style="background:rgba(248,113,113,.2);color:#f87171">!</span>
+    <p style="color:#fecaca"><strong style="color:#fca5a5">Đồng bộ thất bại.</strong> OKX từ chối yêu cầu, vui lòng thử lại sau ít phút.</p>
+  </div>
+  {% elif error == 'not_connected' %}
+  <div class="wlt-banner warn">
+    <span class="wlt-banner-dot" style="background:rgba(251,146,60,.2);color:#fb923c">!</span>
+    <p style="color:#fed7aa"><strong style="color:#fdba74">Chưa kết nối ví.</strong> Hãy nhập API Key OKX và kết nối trước khi đồng bộ.</p>
+  </div>
+  {% endif %}
+
+  {% if synced is not none %}
+  <div class="wlt-banner ok">
+    <span style="font-size:16px;line-height:1.3;margin-top:1px">✅</span>
+    <p style="color:#bbf7d0"><strong style="color:#86efac">Đã đồng bộ xong.</strong> {{ synced }} giao dịch mới được thêm vào danh mục của bạn.</p>
+  </div>
+  {% endif %}
+
+  {% if status.is_connected %}
+  <section class="wlt-card">
+    <div class="wlt-connected-top">
+      <div class="wlt-connected-id">
+        <div class="wlt-logo wlt-logo-lg">OK</div>
+        <div>
+          <h2>Ví OKX</h2>
+          <p class="wlt-card-hint">API Key chỉ-đọc · SPOT</p>
+        </div>
+      </div>
+      <span class="wlt-status-pill"><span class="wlt-status-dot"></span>Đã kết nối</span>
+    </div>
+
+    <div class="wlt-lastsync">
+      Lần đồng bộ gần nhất:
+      {% if status.last_synced_at %}
+        <strong>{{ status.last_synced_at.strftime('%d/%m/%Y %H:%M') }}</strong>
+      {% else %}
+        <span class="never">chưa đồng bộ lần nào</span>
+      {% endif %}
+    </div>
+
+    <div class="wlt-actions">
+      <form method="post" action="/wallet/sync" class="wlt-form-inline" style="flex:1;min-width:170px">
+        <button class="wlt-btn-sync" type="submit" style="width:100%">🔄 Đồng bộ ngay</button>
+      </form>
+      <form method="post" action="/wallet/disconnect" class="wlt-form-inline"
+            onsubmit="return confirm('Ngắt kết nối ví OKX? Giao dịch đã đồng bộ trước đó vẫn được giữ lại.');">
+        <button class="wlt-btn-disconnect" type="submit">Ngắt kết nối</button>
+      </form>
+    </div>
+
+    <p class="wlt-note">Đồng bộ chỉ đọc lịch sử giao dịch SPOT của bạn, không thực hiện bất kỳ lệnh mua/bán nào. API Key được mã hoá trước khi lưu và không bao giờ hiển thị lại.</p>
+  </section>
+
+  {% else %}
+  <section class="wlt-card">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <div class="wlt-logo">OK</div>
+      <div>
+        <h2>Nhập API Key OKX</h2>
+        <p class="wlt-card-hint">Thông tin được mã hoá trước khi lưu trữ.</p>
       </div>
     </div>
-    <div class="d-flex gap-2">
-      <form method="post" action="/wallet/sync" class="m-0">
-        <button class="btn-cp-cyan border-0 px-4 py-2" type="submit">🔄 Đồng bộ ngay</button>
-      </form>
-      <form method="post" action="/wallet/disconnect" class="m-0"
-            onsubmit="return confirm('Ngắt kết nối ví OKX? Giao dịch đã đồng bộ trước đó vẫn được giữ lại.');">
-        <button class="btn btn-sm btn-outline-danger px-3" type="submit">Ngắt kết nối</button>
-      </form>
-    </div>
-  </div>
-</div>
-<p class="cp-text-secondary small">
-  Đồng bộ chỉ <strong>đọc</strong> lịch sử giao dịch SPOT từ OKX và thêm vào danh mục —
-  không thực hiện bất kỳ lệnh mua/bán nào thay bạn. API Key được mã hóa trước khi lưu và
-  không bao giờ hiển thị lại.
-</p>
-{% else %}
-<div class="cp-card p-3 p-md-4 mb-4">
-  <h6 class="mb-3">Nhập API Key OKX</h6>
-  <form method="post" action="/wallet/connect">
-    <div class="mb-3">
-      <label class="form-label">API Key</label>
-      <input type="text" name="api_key" class="form-control" autocomplete="off" required>
-    </div>
-    <div class="mb-3">
-      <label class="form-label">Secret Key</label>
-      <input type="password" name="api_secret" class="form-control" autocomplete="off" required>
-    </div>
-    <div class="mb-3">
-      <label class="form-label">Passphrase</label>
-      <input type="password" name="passphrase" class="form-control" autocomplete="off" required>
-    </div>
-    <button type="submit" class="btn-cp-pink border-0 px-4 py-2">Kết nối</button>
-  </form>
-</div>
 
-<div class="cp-card p-3 p-md-4">
-  <h6 class="mb-3">⚠️ Hướng dẫn tạo API Key an toàn</h6>
-  <ol class="cp-text-secondary small mb-0 ps-3">
-    <li>Vào OKX → <strong>Tài khoản → API</strong> → Tạo API Key mới</li>
-    <li>Chỉ tick quyền <strong>Read</strong> (Đọc) — <strong>KHÔNG</strong> tick Trade hoặc Withdraw</li>
-    <li>Bật <strong>IP Whitelist</strong> nếu OKX yêu cầu (chỉ cho phép IP server của bạn)</li>
-    <li>Copy API Key, Secret Key, Passphrase vào form bên trên</li>
-  </ol>
-</div>
-{% endif %}
+    <form method="post" action="/wallet/connect">
+      <div style="display:flex;flex-direction:column;gap:16px;margin-top:22px">
+        <label class="wlt-field">
+          <span>API Key</span>
+          <input type="text" name="api_key" autocomplete="off" spellcheck="false" placeholder="Dán API Key của bạn" required>
+        </label>
+        <label class="wlt-field">
+          <span>Secret Key</span>
+          <input type="password" name="api_secret" autocomplete="off" placeholder="••••••••••••••••••••" required>
+        </label>
+        <label class="wlt-field">
+          <span>Passphrase</span>
+          <input type="password" name="passphrase" autocomplete="off" placeholder="••••••••••••" required>
+        </label>
+      </div>
+      <button type="submit" class="wlt-btn-primary" style="margin-top:24px">Kết nối</button>
+    </form>
+  </section>
+
+  <section class="wlt-card-soft">
+    <div class="wlt-guide-head">
+      <span style="font-size:19px;line-height:1">⚠️</span>
+      <h3>Hướng dẫn tạo API Key an toàn</h3>
+    </div>
+    <ol class="wlt-guide-list">
+      <li>
+        <span class="wlt-guide-num">1</span>
+        <p>Đăng nhập OKX, vào <strong>Hồ sơ → API</strong> và chọn <strong>"Tạo API Key"</strong>.</p>
+      </li>
+      <li>
+        <span class="wlt-guide-num">2</span>
+        <p>Chỉ cấp quyền <strong>"Đọc" (Read)</strong>. <span style="color:#fca5a5">Tuyệt đối không bật quyền Giao dịch (Trade) hoặc Rút tiền (Withdraw).</span></p>
+      </li>
+      <li>
+        <span class="wlt-guide-num">3</span>
+        <p>Tự đặt <strong>Passphrase</strong> và ghi nhớ — bạn sẽ cần nhập lại đúng Passphrase này ở ô bên trên.</p>
+      </li>
+      <li>
+        <span class="wlt-guide-num">4</span>
+        <p>Sao chép <strong>API Key, Secret Key, Passphrase</strong>, dán vào biểu mẫu phía trên rồi bấm <strong>Kết nối</strong>.</p>
+      </li>
+    </ol>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  /* ---------- WebGL mesh shader nền (Aurora gốc magenta/violet/cyan) ---------- */
+  (function () {
+    const canvas = document.getElementById('wlt-bg-canvas');
+    if (!canvas) return;
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) return;
+    const vs = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}';
+    const fs = `
+      precision highp float;
+      uniform vec2 u_res; uniform float u_time;
+      float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
+      float noise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);}
+      float fbm(vec2 p){float v=0.0,a=0.5;for(int i=0;i<6;i++){v+=a*noise(p);p=p*2.0+vec2(1.7,9.2);a*=0.5;}return v;}
+      void main(){
+        vec2 uv=gl_FragCoord.xy/u_res.xy;
+        vec2 p=uv; p.x*=u_res.x/u_res.y;
+        float t=u_time*0.045;
+        float w1=fbm(p*1.7+vec2(t*1.0,t*0.6));
+        float w2=fbm(p*2.3+vec2(-t*0.7,t*0.9)+w1*0.6);
+        float w3=fbm(p*1.2-vec2(t*0.5,-t*0.4)+w2*0.5);
+        vec3 magenta=vec3(0.914,0.208,0.757);
+        vec3 violet =vec3(0.545,0.361,0.965);
+        vec3 cyan   =vec3(0.133,0.827,0.933);
+        vec3 bg     =vec3(0.020,0.020,0.027);
+        vec3 col=mix(magenta,violet,smoothstep(0.15,0.85,w1));
+        col=mix(col,cyan,smoothstep(0.30,0.95,w2));
+        float energy=smoothstep(0.25,0.95,w3)*0.55+0.12;
+        col=mix(bg,col,energy);
+        float d=distance(uv,vec2(0.5,0.42));
+        col=mix(col,bg,smoothstep(0.35,1.05,d)*0.65);
+        col=pow(col,vec3(1.06));
+        gl_FragColor=vec4(col,1.0);
+      }`;
+    const mk = (ty, src) => { const s = gl.createShader(ty); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog); gl.useProgram(prog);
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const uRes = gl.getUniformLocation(prog, 'u_res');
+    const uTime = gl.getUniformLocation(prog, 'u_time');
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(1, Math.floor(canvas.clientWidth * dpr)), h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
+    };
+    window.addEventListener('resize', resize);
+    const start = performance.now();
+    const loop = () => {
+      resize();
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, (performance.now() - start) / 1000);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      requestAnimationFrame(loop);
+    };
+    loop();
+  })();
+</script>
 {% endblock %}
