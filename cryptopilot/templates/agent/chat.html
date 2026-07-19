@@ -1,117 +1,315 @@
+{# templates/agent/chat.html — GET /agent
+   Context (route hiện tại): configured (bool)
+
+   Giao diện port từ Claude Design (WebGL Aurora shader magenta/violet/cyan, glass
+   box KHÔNG backdrop-filter). Đây là trang có JS TƯƠNG TÁC THẬT (chat gửi/nhận
+   qua POST /agent/chat) — CSS bên dưới style ĐÚNG các class mà JS tự tạo DOM:
+   .cp-bubble-user / .cp-bubble-assistant / .is-thinking / .cp-dot /
+   .cp-tool-steps / .cp-text-danger / .cp-text-secondary / .cp-text-muted.
+
+   2 thay đổi nhỏ so với JS gốc (ngoài CSS thuần):
+   1. addToolSteps() viết lại để tạo cấu trúc đẹp hơn (span.cp-tool-ok/fail +
+      span.cp-tool-name thay vì 1 div text phẳng) — KHÔNG đổi logic fetch/state.
+   2. 3 gợi ý ở trạng thái trống giờ bấm được — click sẽ tự điền vào ô input và
+      gửi luôn (trước đây chỉ là text tĩnh không tương tác).
+   Không có thay đổi nào khác về hành vi — conversationId, escapeHtml, fetch
+   /agent/chat, disabled state khi đang chờ... đều giữ nguyên y hệt bản gốc.
+#}
 {% extends "base.html" %}
+
 {% block title %}Trợ lý AI — CryptoPilot{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root { --cp-mag:#e935c1; --cp-vio:#8b5cf6; --cp-cyan:#22d3ee; }
+
+  .agt-bg-canvas { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; }
+  .agt-bg-overlay { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% -10%, rgba(233,53,193,.10), transparent 55%), radial-gradient(90% 70% at 100% 110%, rgba(34,211,238,.08), transparent 60%), linear-gradient(180deg, rgba(5,5,7,.15), rgba(5,5,7,.72)); }
+
+  .agt-main { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: 38px 20px 56px; display: flex; flex-direction: column; gap: 22px; }
+
+  .agt-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .agt-title { margin: 0; font-size: 27px; font-weight: 700; letter-spacing: -.6px; line-height: 1.15; color: #f3f1f8; }
+  .agt-sub { margin: 7px 0 0; font-size: 14px; line-height: 1.5; }
+  .agt-back { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 11px; font-size: 13.5px; font-weight: 500; color: #f3f1f8; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.12); white-space: nowrap; transition: background .15s, border-color .15s; text-decoration: none; }
+  .agt-back:hover { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.22); }
+
+  .agt-banner { display: flex; align-items: flex-start; gap: 12px; padding: 13px 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(245,158,11,.14), rgba(234,88,12,.10)); border: 1px solid rgba(245,158,11,.34); box-shadow: 0 6px 22px rgba(234,88,12,.10); }
+  .agt-banner strong { color: #fbbf24; font-weight: 600; }
+  .agt-banner span.txt { color: rgba(251,191,36,.82); }
+
+  /* Glass — KHÔNG backdrop-filter */
+  .agt-card { display: flex; flex-direction: column; background: rgba(17,15,24,.55); border: 1px solid rgba(255,255,255,.09); border-radius: 22px; box-shadow: 0 28px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06); overflow: hidden; }
+
+  #chat-log { flex: 1; display: flex; flex-direction: column; gap: 13px; padding: 22px; min-height: 320px; max-height: 55vh; overflow-y: auto; }
+  #chat-log::-webkit-scrollbar { width: 9px; }
+  #chat-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  #chat-log::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); background-clip: padding-box; }
+
+  .agt-empty { margin: auto; max-width: 520px; text-align: center; padding: 14px 0; }
+  .agt-empty-icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 26px; background: linear-gradient(135deg, rgba(233,53,193,.22), rgba(34,211,238,.18)); border: 1px solid rgba(255,255,255,.1); }
+  .agt-empty h2 { margin: 0 0 6px; font-size: 18px; font-weight: 650; letter-spacing: -.3px; color: #f3f1f8; }
+  .agt-empty-lead { margin: 0 0 20px; font-size: 13.5px; line-height: 1.55; }
+  .agt-suggestions { display: flex; flex-direction: column; gap: 9px; text-align: left; }
+  .agt-suggestion { display: flex; align-items: center; gap: 11px; width: 100%; padding: 13px 15px; border-radius: 13px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); color: #f3f1f8; font-size: 14px; font-family: inherit; text-align: left; cursor: pointer; transition: background .15s, border-color .15s, transform .12s; }
+  .agt-suggestion:hover { background: rgba(255,255,255,.06); border-color: rgba(139,92,246,.4); transform: translateY(-1px); }
+  .agt-suggestion .icon { font-size: 17px; flex: none; }
+  .agt-suggestion .txt { line-height: 1.4; }
+  .agt-suggestion .arrow { margin-left: auto; color: rgba(243,241,248,.3); font-size: 16px; }
+  .agt-empty-note { margin: 20px 0 0; font-size: 12px; line-height: 1.5; }
+
+  /* ---- Message bubbles (JS tạo động — GIỮ NGUYÊN tên class) ---- */
+  .cp-text-danger { color: #ff7b7b; }
+  .cp-text-secondary { color: rgba(243,241,248,.68); }
+  .cp-text-muted { color: rgba(243,241,248,.42); }
+
+  .cp-bubble-user, .cp-bubble-assistant { max-width: 78%; padding: 13px 16px; border-radius: 18px; font-size: 15px; line-height: 1.55; letter-spacing: -.1px; word-wrap: break-word; white-space: pre-wrap; position: relative; }
+  .cp-bubble-user { align-self: flex-end; color: #fff; border-bottom-right-radius: 5px; background: linear-gradient(135deg, rgba(233,53,193,.30), rgba(139,92,246,.32)); border: 1px solid rgba(233,53,193,.42); box-shadow: 0 6px 22px rgba(233,53,193,.16), inset 0 1px 0 rgba(255,255,255,.14); }
+  .cp-bubble-assistant { align-self: flex-start; color: #f3f1f8; border-bottom-left-radius: 5px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.09); box-shadow: 0 6px 22px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.05); }
+
+  .cp-bubble-assistant.is-thinking { display: inline-flex; align-items: center; gap: 6px; padding: 15px 18px; min-width: 0; width: auto; }
+  .cp-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(243,241,248,.55); animation: cpDot 1.35s ease-in-out infinite; display: inline-block; }
+  .cp-dot:nth-child(2) { animation-delay: .18s; }
+  .cp-dot:nth-child(3) { animation-delay: .36s; }
+  @keyframes cpDot { 0%,60%,100% { transform: translateY(0); opacity: .35; } 30% { transform: translateY(-5px); opacity: 1; } }
+
+  .cp-tool-steps { align-self: flex-start; max-width: 78%; margin: -2px 0 0 2px; background: rgba(255,255,255,.022); border: 1px solid rgba(255,255,255,.06); border-radius: 12px; font-size: 12.5px; color: rgba(243,241,248,.5); overflow: hidden; }
+  .cp-tool-steps > summary { list-style: none; cursor: pointer; padding: 8px 13px; display: flex; align-items: center; gap: 7px; letter-spacing: .1px; user-select: none; transition: color .15s, background .15s; }
+  .cp-tool-steps > summary::-webkit-details-marker { display: none; }
+  .cp-tool-steps > summary:hover { color: rgba(243,241,248,.78); background: rgba(255,255,255,.02); }
+  .cp-tool-steps > summary::after { content: "›"; margin-left: auto; font-size: 15px; opacity: .6; transition: transform .2s; transform: rotate(90deg); }
+  .cp-tool-steps[open] > summary::after { transform: rotate(-90deg); }
+  .cp-tool-steps .cp-tool-list { padding: 2px 13px 11px; display: flex; flex-direction: column; gap: 5px; }
+  .cp-tool-steps .cp-tool-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .cp-tool-steps .cp-tool-ok { color: #4ade80; }
+  .cp-tool-steps .cp-tool-fail { color: #ff7b7b; }
+  .cp-tool-steps .cp-tool-name { color: rgba(243,241,248,.62); font-family: ui-monospace,'SF Mono',Menlo,monospace; font-size: 12px; }
+  .cp-tool-steps .cp-tool-args { color: rgba(243,241,248,.4); font-size: 11.5px; }
+
+  #chat-form { display: flex; gap: 10px; padding: 15px 18px; border-top: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.015); }
+  #chat-input { flex: 1; min-width: 0; padding: 12px 15px; border-radius: 13px; font-size: 14.5px; font-family: inherit; color: #f3f1f8; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.11); outline: none; transition: opacity .2s, border-color .15s; }
+  #chat-input:disabled { opacity: .5; }
+  #chat-send { flex: none; padding: 12px 22px; border-radius: 13px; font-size: 14.5px; font-weight: 650; font-family: inherit; color: #fff; border: none; cursor: pointer; transition: opacity .2s, transform .12s; background: linear-gradient(135deg,#e935c1,#8b5cf6 55%,#22d3ee); box-shadow: 0 8px 24px rgba(139,92,246,.32); }
+  #chat-send:disabled { opacity: .5; cursor: not-allowed; }
+
+  .agt-footer-note { margin: 0; text-align: center; font-size: 11.5px; line-height: 1.5; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h3 class="mb-0">🤖 Trợ lý phân tích danh mục</h3>
-  <a href="/portfolio" class="btn-cp-outline px-3 py-2 text-decoration-none">← Về danh mục</a>
-</div>
+<canvas id="agt-bg-canvas" class="agt-bg-canvas"></canvas>
+<div class="agt-bg-overlay"></div>
 
-{% if not configured %}
-<div class="alert alert-warning py-2">
-  ⚠️ Chưa cấu hình <code>GEMINI_API_KEY</code> trong <code>.env</code> — trợ lý sẽ báo lỗi
-  thân thiện khi bạn gửi tin. Phần danh mục/giá vẫn dùng bình thường.
-</div>
-{% endif %}
+<main class="agt-main">
+  <header class="agt-header">
+    <div>
+      <h1 class="agt-title">🤖 Trợ lý phân tích danh mục</h1>
+      <p class="agt-sub cp-text-secondary">Hỏi bất kỳ điều gì về danh mục của bạn — AI sẽ gọi các công cụ dữ liệu để phân tích theo thời gian thực.</p>
+    </div>
+    <a href="/portfolio" class="agt-back">← Về danh mục</a>
+  </header>
 
-<div class="cp-card p-3 p-md-4">
-  <div id="chat-log" class="d-flex flex-column gap-3 px-1" style="min-height:320px;max-height:55vh;overflow-y:auto">
-    <div class="cp-text-secondary small">
-      Hỏi mình về danh mục của bạn, ví dụ:
-      <em>"Danh mục tôi có đang rủi ro không?"</em>,
-      <em>"Giá BTC bây giờ bao nhiêu?"</em>,
-      <em>"ETH 30 ngày qua thế nào?"</em>
-      <br><span class="cp-text-muted">Lưu ý: đây là phân tích, không phải lời khuyên đầu tư.</span>
+  {% if not configured %}
+  <div class="agt-banner" role="alert">
+    <span style="font-size:17px;line-height:1.3;flex:none">⚠️</span>
+    <div style="font-size:13.5px;line-height:1.55">
+      <strong>Chưa cấu hình GEMINI_API_KEY.</strong>
+      <span class="txt">Trợ lý đang chạy ở chế độ giới hạn — một số công cụ phân tích có thể không phản hồi. Thêm khóa API vào biến môi trường để bật đầy đủ tính năng.</span>
     </div>
   </div>
+  {% endif %}
 
-  <form id="chat-form" class="mt-3 d-flex gap-2">
-    <input id="chat-input" type="text" class="form-control" autocomplete="off"
-           maxlength="2000" placeholder="Nhập câu hỏi về danh mục của bạn..." required>
-    <button id="chat-send" class="btn-cp-violet border-0 px-4" type="submit">Gửi</button>
-  </form>
-</div>
+  <section class="agt-card">
+    <div id="chat-log">
+      <div class="agt-empty" id="chat-empty-state">
+        <div class="agt-empty-icon">💬</div>
+        <h2>Bắt đầu phân tích danh mục</h2>
+        <p class="agt-empty-lead cp-text-secondary">Thử một trong các câu hỏi gợi ý bên dưới, hoặc gõ câu hỏi của riêng bạn.</p>
+        <div class="agt-suggestions">
+          <button type="button" class="agt-suggestion" data-suggest="Danh mục của tôi đang lời hay lỗ tính đến hôm nay?">
+            <span class="icon">📊</span><span class="txt">Danh mục của tôi đang lời hay lỗ tính đến hôm nay?</span><span class="arrow">↗</span>
+          </button>
+          <button type="button" class="agt-suggestion" data-suggest="Phân bổ tài sản của tôi có đủ đa dạng không?">
+            <span class="icon">⚖️</span><span class="txt">Phân bổ tài sản của tôi có đủ đa dạng không?</span><span class="arrow">↗</span>
+          </button>
+          <button type="button" class="agt-suggestion" data-suggest="Nếu BTC giảm 15% thì danh mục tôi bị ảnh hưởng ra sao?">
+            <span class="icon">🔮</span><span class="txt">Nếu BTC giảm 15% thì danh mục tôi bị ảnh hưởng ra sao?</span><span class="arrow">↗</span>
+          </button>
+        </div>
+        <p class="agt-empty-note cp-text-muted">Lưu ý: đây là <span class="cp-text-secondary">phân tích dữ liệu</span>, không phải lời khuyên đầu tư. Luôn tự nghiên cứu trước khi ra quyết định.</p>
+      </div>
+    </div>
 
+    <form id="chat-form">
+      <input id="chat-input" type="text" autocomplete="off" maxlength="2000"
+             placeholder="Hỏi về danh mục của bạn…" required>
+      <button id="chat-send" type="submit">Gửi</button>
+    </form>
+  </section>
+
+  <p class="agt-footer-note cp-text-muted">CryptoPilot · Trợ lý phân tích chỉ mang tính tham khảo, không cấu thành lời khuyên tài chính.</p>
+</main>
+{% endblock %}
+
+{% block extra_js %}
 <script>
-(function () {
-  const log = document.getElementById("chat-log");
-  const form = document.getElementById("chat-form");
-  const input = document.getElementById("chat-input");
-  const sendBtn = document.getElementById("chat-send");
-  let conversationId = null;
+  /* ---------- WebGL mesh shader nền (Aurora gốc magenta/violet/cyan) ---------- */
+  (function () {
+    const canvas = document.getElementById('agt-bg-canvas');
+    if (!canvas) return;
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) return;
+    const vs = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+    const fs = `
+      precision highp float;
+      uniform vec2 u_res; uniform float u_time;
+      float hash(vec2 p){p=fract(p*vec2(123.34,345.45));p+=dot(p,p+34.345);return fract(p.x*p.y);}
+      float noise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash(i),b=hash(i+vec2(1,0)),c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));vec2 u=f*f*(3.-2.*f);return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y;}
+      float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<6;i++){v+=a*noise(p);p*=2.03;a*=.5;}return v;}
+      void main(){
+        vec2 uv=gl_FragCoord.xy/u_res.xy;
+        vec2 p=uv*2.6; p.x*=u_res.x/u_res.y;
+        float t=u_time*.045;
+        vec2 q=vec2(fbm(p+vec2(0.,t)),fbm(p+vec2(5.2,-t*.8)));
+        vec2 r=vec2(fbm(p+q*2.1+vec2(1.7,9.2)+t*.5),fbm(p+q*2.1+vec2(8.3,2.8)-t*.4));
+        float f=fbm(p+r*2.4);
+        vec3 mag=vec3(.914,.208,.757), vio=vec3(.545,.361,.965), cyan=vec3(.133,.827,.933);
+        vec3 col=mix(vio,mag,clamp(f*1.35,0.,1.));
+        col=mix(col,cyan,clamp(r.x*r.y*1.6,0.,1.));
+        col=mix(col,vio,clamp(q.y*.6,0.,1.));
+        float m=smoothstep(.15,1.05,f*.7+r.x*.5);
+        vec3 bg=vec3(.020,.020,.027);
+        col=mix(bg,col,m*.5);
+        float vig=smoothstep(1.35,.25,length(uv-.5));
+        col*=mix(.35,1.,vig);
+        col=mix(bg,col,.9);
+        gl_FragColor=vec4(col,1.);
+      }`;
+    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog); gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "p");
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const uRes = gl.getUniformLocation(prog, "u_res"), uT = gl.getUniformLocation(prog, "u_time");
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = canvas.clientWidth * dpr; canvas.height = canvas.clientHeight * dpr;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    };
+    resize(); window.addEventListener("resize", resize);
+    const t0 = performance.now();
+    const loop = () => {
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uT, (performance.now() - t0) / 1000);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      requestAnimationFrame(loop);
+    };
+    loop();
+  })();
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html !== undefined) e.innerHTML = html;
-    return e;
-  }
+  /* ---------- Chat — GIỮ NGUYÊN logic fetch/state gốc, chỉ đổi phần tạo DOM ---------- */
+  (function () {
+    const log = document.getElementById("chat-log");
+    const emptyState = document.getElementById("chat-empty-state");
+    const form = document.getElementById("chat-form");
+    const input = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("chat-send");
+    let conversationId = null;
 
-  function escapeHtml(s) {
-    const d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
-  }
-
-  function addBubble(role, text, thinking) {
-    const wrap = el("div", "d-flex " + (role === "user" ? "justify-content-end" : "justify-content-start"));
-    const bubbleCls = role === "user" ? "cp-bubble-user" : "cp-bubble-assistant" + (thinking ? " is-thinking" : "");
-    const bubble = el("div", "px-3 py-2 " + bubbleCls, text);
-    bubble.style.maxWidth = "80%";
-    wrap.appendChild(bubble);
-    log.appendChild(wrap);
-    log.scrollTop = log.scrollHeight;
-    return bubble;
-  }
-
-  function thinkingDots() {
-    return '<span class="cp-dot"></span><span class="cp-dot"></span><span class="cp-dot"></span>';
-  }
-
-  function addToolSteps(steps) {
-    if (!steps || !steps.length) return;
-    const det = el("details", "small cp-tool-steps");
-    const sum = el("summary", "", "🔧 Agent đã gọi " + steps.length + " tool");
-    det.appendChild(sum);
-    steps.forEach(function (s) {
-      const argStr = Object.keys(s.args || {}).length ? " (" + JSON.stringify(s.args) + ")" : "";
-      det.appendChild(el("div", "ms-3 cp-text-secondary", (s.ok ? "✓ " : "✗ ") + escapeHtml(s.name) + escapeHtml(argStr)));
-    });
-    log.appendChild(det);
-    log.scrollTop = log.scrollHeight;
-  }
-
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-    const text = input.value.trim();
-    if (!text) return;
-
-    addBubble("user", escapeHtml(text).replace(/\n/g, "<br>"));
-    input.value = "";
-    input.disabled = sendBtn.disabled = true;
-
-    const thinking = addBubble("assistant", thinkingDots(), true);
-
-    try {
-      const res = await fetch("/agent/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, conversation_id: conversationId }),
-      });
-      const data = await res.json();
-      conversationId = data.conversation_id;
-      thinking.classList.remove("is-thinking");
-      thinking.innerHTML = escapeHtml(data.reply).replace(/\n/g, "<br>");
-      if (data.degraded) thinking.classList.add("cp-text-danger");
-      addToolSteps(data.tool_steps);
-    } catch (err) {
-      thinking.classList.remove("is-thinking");
-      thinking.innerHTML = "Lỗi kết nối tới máy chủ. Thử lại sau nhé.";
-      thinking.classList.add("cp-text-danger");
-    } finally {
-      input.disabled = sendBtn.disabled = false;
-      input.focus();
+    function el(tag, cls, html) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (html !== undefined) e.innerHTML = html;
+      return e;
     }
-  });
-})();
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function addBubble(role, text, thinking) {
+      if (emptyState) emptyState.remove();
+      const bubbleCls = role === "user" ? "cp-bubble-user" : "cp-bubble-assistant" + (thinking ? " is-thinking" : "");
+      const bubble = el("div", bubbleCls, text);
+      log.appendChild(bubble);
+      log.scrollTop = log.scrollHeight;
+      return bubble;
+    }
+
+    function thinkingDots() {
+      return '<span class="cp-dot"></span><span class="cp-dot"></span><span class="cp-dot"></span>';
+    }
+
+    // Nâng cấp so với bản gốc: dùng span.cp-tool-ok/fail + span.cp-tool-name
+    // thay vì 1 div text phẳng — chỉ đổi cách DỰNG DOM, dữ liệu vào (s.ok/s.name/s.args)
+    // và điều kiện gọi hàm này giữ nguyên y hệt bản gốc.
+    function addToolSteps(steps) {
+      if (!steps || !steps.length) return;
+      const det = el("details", "cp-tool-steps");
+      det.appendChild(el("summary", "", "🔧 Agent đã gọi " + steps.length + " tool"));
+      const list = el("div", "cp-tool-list");
+      steps.forEach(function (s) {
+        const row = el("div", "cp-tool-row");
+        row.appendChild(el("span", s.ok ? "cp-tool-ok" : "cp-tool-fail", s.ok ? "✓" : "✗"));
+        row.appendChild(el("span", "cp-tool-name", escapeHtml(s.name)));
+        const argStr = s.args && Object.keys(s.args).length ? JSON.stringify(s.args) : "";
+        if (argStr) row.appendChild(el("span", "cp-tool-args", escapeHtml(argStr)));
+        list.appendChild(row);
+      });
+      det.appendChild(list);
+      log.appendChild(det);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function sendMessage(text) {
+      addBubble("user", escapeHtml(text).replace(/\n/g, "<br>"));
+      input.value = "";
+      input.disabled = sendBtn.disabled = true;
+
+      const thinking = addBubble("assistant", thinkingDots(), true);
+
+      try {
+        const res = await fetch("/agent/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, conversation_id: conversationId }),
+        });
+        const data = await res.json();
+        conversationId = data.conversation_id;
+        thinking.classList.remove("is-thinking");
+        thinking.innerHTML = escapeHtml(data.reply).replace(/\n/g, "<br>");
+        if (data.degraded) thinking.classList.add("cp-text-danger");
+        addToolSteps(data.tool_steps);
+      } catch (err) {
+        thinking.classList.remove("is-thinking");
+        thinking.innerHTML = "Lỗi kết nối tới máy chủ. Thử lại sau nhé.";
+        thinking.classList.add("cp-text-danger");
+      } finally {
+        input.disabled = sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      sendMessage(text);
+    });
+
+    // Bổ sung: gợi ý ở trạng thái trống bấm được — điền vào ô input và gửi luôn
+    document.querySelectorAll(".agt-suggestion").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        sendMessage(btn.dataset.suggest);
+      });
+    });
+  })();
 </script>
 {% endblock %}

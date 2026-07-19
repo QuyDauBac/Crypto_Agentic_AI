@@ -1,93 +1,301 @@
+{# templates/alerts/index.html — GET /alerts, POST /alerts, POST /alerts/{id}/delete
+   Context: error (bool), default_threshold (str|number), alerts (list[Alert])
+   Mỗi alert: a.coin.symbol, a.coin.coingecko_id, a.condition ('above'|'below'),
+   a.threshold_price, a.is_active, a.id
+
+   Giao diện port từ Claude Design (WebGL Aurora shader magenta/violet/cyan, glass
+   box KHÔNG backdrop-filter). Trang có JS autocomplete THẬT (debounce 300ms gọi
+   /market/api/search) — GIỮ ĐÚNG 5 id: #alert-coin-search, #coingecko_id, #symbol,
+   #name, #coin-results (JS dùng getElementById).
+
+   Khác biệt so với bản Claude Design gốc (bản đó chỉ là demo tĩnh, không submit
+   thật):
+   - Card "Đặt cảnh báo mới" giờ bọc trong <form method="post" action="/alerts">
+     thật, có đủ name= cho POST (condition, threshold_price, coingecko_id,
+     symbol, name)
+   - Mỗi dòng cảnh báo có <form method="post" action="/alerts/{id}/delete"> thật
+     thay vì chỉ xoá khỏi state JS như bản demo
+   - JS autocomplete result row đổi sang <button> (thay vì <div>) để giữ đúng
+     hành vi click + bàn phím như bản gốc, nhưng visual style mới (avatar tròn +
+     tên + symbol) theo đúng thiết kế
+#}
 {% extends "base.html" %}
+
 {% block title %}Cảnh báo giá — CryptoPilot{% endblock %}
+
+{% block extra_css %}
+<style>
+  .alt-bg-canvas { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; }
+  .alt-bg-overlay { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: radial-gradient(120% 80% at 50% -10%, rgba(0,0,0,0) 40%, rgba(5,5,7,.55) 100%); }
+
+  .alt-main { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; display: flex; flex-direction: column; gap: 22px; }
+  .alt-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .alt-title { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -.02em; display: flex; align-items: center; gap: 12px; color: #fff; }
+  .alt-back { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 11px; border: 1px solid rgba(255,255,255,.16); color: rgba(255,255,255,.86); font-size: 14px; font-weight: 500; background: rgba(255,255,255,.02); text-decoration: none; transition: background .15s, border-color .15s; }
+  .alt-back:hover { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.26); }
+
+  .alt-banner { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; background: rgba(255,69,58,.11); border: 1px solid rgba(255,69,58,.32); }
+  .alt-banner-dot { flex: none; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,69,58,.25); color: #ff6961; font-size: 14px; font-weight: 700; line-height: 1; margin-top: 1px; }
+  .alt-banner-text { font-size: 14.5px; line-height: 1.45; color: #ff8a80; }
+
+  /* Glass — KHÔNG backdrop-filter */
+  .alt-card { position: relative; overflow: visible; border-radius: 22px; padding: 26px; background: linear-gradient(180deg, rgba(44,44,52,.55), rgba(20,20,26,.55)); border: 1px solid rgba(255,255,255,.09); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 30px 70px -30px rgba(0,0,0,.8); }
+  .alt-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .alt-card-head h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: #fff; }
+  .alt-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+  .alt-dot.aurora { background: linear-gradient(135deg,#e935c1,#8b5cf6,#22d3ee); box-shadow: 0 0 12px rgba(139,92,246,.7); }
+  .alt-dot.cool { background: linear-gradient(135deg,#22d3ee,#8b5cf6); box-shadow: 0 0 12px rgba(34,211,238,.7); }
+
+  .alt-form-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+  .alt-field { min-width: 140px; }
+  .alt-field.coin { position: relative; flex: 2 1 240px; min-width: 220px; z-index: 20; }
+  .alt-field.cond { flex: 1.3 1 180px; min-width: 170px; }
+  .alt-field.price { flex: 1 1 150px; }
+  .alt-field label { display: block; font-size: 12.5px; font-weight: 500; color: rgba(235,235,245,.55); margin-bottom: 8px; }
+  .alt-input-wrap { position: relative; }
+  .alt-input-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: rgba(235,235,245,.4); font-size: 15px; pointer-events: none; }
+  .alt-input-wrap input, .alt-input-wrap select { width: 100%; padding: 12px 14px 12px 34px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: #fff; font-size: 15px; outline: none; font-family: inherit; }
+  .alt-input-wrap input:focus, .alt-input-wrap select:focus { border-color: rgba(139,92,246,.8); box-shadow: 0 0 0 3px rgba(139,92,246,.22); background: rgba(255,255,255,.07); }
+  .alt-input-wrap select { padding-left: 14px; padding-right: 34px; appearance: none; -webkit-appearance: none; cursor: pointer; }
+  .alt-input-wrap select option { background: #141418; color: #fff; }
+  .alt-select-arrow { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); color: rgba(235,235,245,.45); font-size: 11px; pointer-events: none; }
+  .alt-price-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: rgba(235,235,245,.45); font-size: 15px; pointer-events: none; }
+  .alt-input-wrap input[type="number"] { padding-left: 26px; }
+
+  .alt-submit { flex: none; padding: 12px 22px; border-radius: 12px; border: none; cursor: pointer; font-size: 15px; font-weight: 600; color: #fff; background: linear-gradient(135deg,#e935c1 0%,#8b5cf6 52%,#22d3ee 100%); box-shadow: 0 10px 26px -8px rgba(139,92,246,.7), inset 0 1px 0 rgba(255,255,255,.25); white-space: nowrap; }
+  .alt-submit:hover { filter: brightness(1.08); }
+  .alt-submit:active { filter: brightness(.96); transform: translateY(1px); }
+
+  .alt-hint { margin: 16px 0 0; font-size: 13px; line-height: 1.5; color: rgba(235,235,245,.45); }
+
+  #coin-results { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 40; padding: 6px; border-radius: 14px; background: linear-gradient(180deg, rgba(38,38,46,.97), rgba(22,22,28,.97)); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 24px 60px -18px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.06); max-height: 340px; overflow-y: auto; overflow-x: hidden; }
+  #coin-results:empty { display: none; }
+  .alt-result-row { display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 10px; border-radius: 9px; cursor: pointer; background: transparent; border: none; text-align: left; font-family: inherit; }
+  .alt-result-row:hover { background: rgba(255,255,255,.06); }
+  .alt-result-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, rgba(233,53,193,.25), rgba(34,211,238,.25)); border: 1px solid rgba(255,255,255,.12); font-size: 11px; font-weight: 700; color: #fff; }
+  .alt-result-name { flex: 1; font-size: 14.5px; font-weight: 500; color: rgba(255,255,255,.92); }
+  .alt-result-symbol { font-size: 12px; font-weight: 600; letter-spacing: .03em; color: rgba(235,235,245,.5); text-transform: uppercase; }
+
+  .alt-card-count { font-size: 12.5px; font-weight: 500; color: rgba(235,235,245,.45); padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); }
+
+  .alt-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 52px 20px; }
+  .alt-empty-icon { font-size: 44px; opacity: .55; }
+  .alt-empty-text { font-size: 15px; color: rgba(235,235,245,.55); }
+
+  .alt-list { display: flex; flex-direction: column; gap: 10px; }
+  .alt-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.07); transition: background .15s, border-color .15s; }
+  .alt-row:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.11); }
+  .alt-row-id { display: flex; align-items: center; gap: 12px; flex: 1 1 160px; min-width: 150px; }
+  .alt-row-avatar { flex: none; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, rgba(233,53,193,.28), rgba(139,92,246,.25), rgba(34,211,238,.28)); border: 1px solid rgba(255,255,255,.14); font-size: 13px; font-weight: 700; color: #fff; }
+  .alt-row-symbol { font-size: 15px; font-weight: 600; letter-spacing: .01em; color: #fff; }
+  .alt-row-coinid { font-size: 12px; color: rgba(235,235,245,.4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .alt-row-cond { display: flex; flex-direction: column; gap: 2px; flex: 1 1 160px; min-width: 150px; }
+  .alt-row-cond-label { font-size: 12.5px; color: rgba(235,235,245,.5); }
+  .alt-row-cond-price { font-size: 15px; font-weight: 600; color: rgba(255,255,255,.92); font-variant-numeric: tabular-nums; }
+  .alt-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 20px; font-size: 12.5px; font-weight: 600; flex: none; }
+  .alt-badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .alt-badge.watching { color: #30d158; background: rgba(48,209,88,.14); border: 1px solid rgba(48,209,88,.32); }
+  .alt-badge.watching .dot { background: #30d158; box-shadow: 0 0 8px rgba(48,209,88,.9); }
+  .alt-badge.triggered { color: rgba(235,235,245,.6); background: rgba(142,142,147,.18); border: 1px solid rgba(142,142,147,.28); }
+  .alt-badge.triggered .dot { background: rgba(235,235,245,.5); }
+  .alt-delete-btn { flex: none; padding: 8px 13px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: #ff8a80; background: rgba(255,69,58,.1); border: 1px solid rgba(255,69,58,.22); font-family: inherit; }
+  .alt-delete-btn:hover { background: rgba(255,69,58,.2); border-color: rgba(255,69,58,.4); }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h3 class="mb-0">🔔 Cảnh báo giá</h3>
-  <a href="/notifications" class="btn-cp-outline px-3 py-2 text-decoration-none">Hộp thông báo →</a>
-</div>
+<canvas id="alt-bg-canvas" class="alt-bg-canvas"></canvas>
+<div class="alt-bg-overlay"></div>
 
-{% if error %}
-<div class="alert alert-danger py-2">Dữ liệu không hợp lệ. Kiểm tra lại coin id và ngưỡng giá (&gt; 0).</div>
-{% endif %}
+<main class="alt-main">
+  <header class="alt-header">
+    <h1 class="alt-title"><span style="font-size:26px">🔔</span> Cảnh báo giá</h1>
+    <a href="/notifications" class="alt-back">Hộp thông báo <span style="opacity:.7">→</span></a>
+  </header>
 
-<div class="cp-card p-3 p-md-4 mb-4">
-  <h6 class="mb-3">Đặt cảnh báo mới</h6>
-  <form method="post" action="/alerts" class="row g-2 align-items-end">
-    <div class="col-md-4 position-relative">
-      <label class="form-label small mb-1">Coin</label>
-      <input type="text" id="alert-coin-search" class="form-control" autocomplete="off"
-             placeholder="Tìm coin (bitcoin, ethereum...)" required>
-      <div id="coin-results" class="list-group position-absolute w-100 shadow"
-           style="z-index:1000; max-height:240px; overflow:auto;"></div>
-      <input type="hidden" name="coingecko_id" id="coingecko_id" required>
-      <input type="hidden" name="symbol" id="symbol">
-      <input type="hidden" name="name" id="name">
-    </div>
-    <div class="col-md-3">
-      <label class="form-label small mb-1">Điều kiện</label>
-      <select name="condition" class="form-select">
-        <option value="above">Vượt lên trên ≥</option>
-        <option value="below">Rớt xuống dưới ≤</option>
-      </select>
-    </div>
-    <div class="col-md-3">
-      <label class="form-label small mb-1">Ngưỡng giá (USD)</label>
-      <input name="threshold_price" type="number" step="any" min="0" class="form-control"
-             value="{{ default_threshold }}" placeholder="65000" required>
-    </div>
-    <div class="col-md-2">
-      <button class="btn-cp-pink border-0 w-100 py-2" type="submit">Đặt cảnh báo</button>
-    </div>
-  </form>
-  <p class="cp-text-secondary small mt-2 mb-0">
-    Cảnh báo là <strong>một lần</strong>: khi giá chạm ngưỡng, hệ thống gửi thông báo rồi tự tắt.
-  </p>
-</div>
-
-<div class="cp-card p-3 p-md-4">
-  <h6 class="mb-3">Cảnh báo của bạn</h6>
-  {% if alerts %}
-  <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0">
-      <thead>
-        <tr>
-          <th>Coin</th><th>Điều kiện</th><th class="text-end">Ngưỡng</th>
-          <th>Trạng thái</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in alerts %}
-        <tr>
-          <td><strong>{{ a.coin.symbol|upper }}</strong> <span class="cp-text-secondary small">{{ a.coin.coingecko_id }}</span></td>
-          <td>{{ 'Vượt lên trên ≥' if a.condition == 'above' else 'Rớt xuống dưới ≤' }}</td>
-          <td class="text-end">${{ '%.2f'|format(a.threshold_price) }}</td>
-          <td>
-            {% if a.is_active %}
-              <span class="badge bg-success">Đang theo dõi</span>
-            {% else %}
-              <span class="badge bg-secondary">Đã kích hoạt</span>
-            {% endif %}
-          </td>
-          <td class="text-end">
-            <form method="post" action="/alerts/{{ a.id }}/delete" class="d-inline m-0">
-              <button class="btn btn-sm btn-outline-danger" type="submit">Xoá</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="cp-empty py-4">
-    <div class="cp-empty-icon">🔔</div>
-    <p class="mb-0">Bạn chưa đặt cảnh báo nào.</p>
+  {% if error %}
+  <div class="alt-banner">
+    <span class="alt-banner-dot">!</span>
+    <div class="alt-banner-text">Dữ liệu không hợp lệ. Kiểm tra lại coin id và ngưỡng giá (&gt; 0).</div>
   </div>
   {% endif %}
-</div>
 
+  <!-- CARD 1: Đặt cảnh báo mới -->
+  <section class="alt-card" style="z-index:5">
+    <div class="alt-card-head">
+      <span class="alt-dot aurora"></span>
+      <h2>Đặt cảnh báo mới</h2>
+    </div>
+
+    <form method="post" action="/alerts">
+      <div class="alt-form-row">
+        <div class="alt-field coin">
+          <label for="alert-coin-search">Coin</label>
+          <div class="alt-input-wrap">
+            <span class="alt-input-icon">⌕</span>
+            <input id="alert-coin-search" type="text" autocomplete="off"
+                   placeholder="Tìm coin (BTC, Ethereum…)" required>
+            <input type="hidden" name="coingecko_id" id="coingecko_id" required>
+            <input type="hidden" name="symbol" id="symbol">
+            <input type="hidden" name="name" id="name">
+            <div id="coin-results"></div>
+          </div>
+        </div>
+
+        <div class="alt-field cond">
+          <label for="alert-condition">Điều kiện</label>
+          <div class="alt-input-wrap">
+            <select name="condition" id="alert-condition">
+              <option value="above">Vượt lên trên ≥</option>
+              <option value="below">Rớt xuống dưới ≤</option>
+            </select>
+            <span class="alt-select-arrow">▼</span>
+          </div>
+        </div>
+
+        <div class="alt-field price">
+          <label for="alert-price">Ngưỡng giá (USD)</label>
+          <div class="alt-input-wrap">
+            <span class="alt-price-icon">$</span>
+            <input name="threshold_price" id="alert-price" type="number" step="any" min="0"
+                   value="{{ default_threshold }}" placeholder="0.00" required>
+          </div>
+        </div>
+
+        <button type="submit" class="alt-submit">Đặt cảnh báo</button>
+      </div>
+
+      <p class="alt-hint">Cảnh báo là <strong>một lần</strong>: khi giá chạm ngưỡng, hệ thống gửi thông báo rồi tự tắt.</p>
+    </form>
+  </section>
+
+  <!-- CARD 2: Cảnh báo của bạn -->
+  <section class="alt-card">
+    <div class="alt-card-head" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="alt-dot cool"></span>
+        <h2>Cảnh báo của bạn</h2>
+      </div>
+      <span class="alt-card-count">{{ 'Chưa có' if not alerts else alerts|length ~ ' cảnh báo' }}</span>
+    </div>
+
+    {% if alerts %}
+    <div class="alt-list">
+      {% for a in alerts %}
+      <div class="alt-row">
+        <div class="alt-row-id">
+          <span class="alt-row-avatar">{{ a.coin.symbol[:3]|upper }}</span>
+          <div>
+            <span class="alt-row-symbol">{{ a.coin.symbol|upper }}</span>
+            <span class="alt-row-coinid">{{ a.coin.coingecko_id }}</span>
+          </div>
+        </div>
+
+        <div class="alt-row-cond">
+          <span class="alt-row-cond-label">{{ 'Vượt lên trên ≥' if a.condition == 'above' else 'Rớt xuống dưới ≤' }}</span>
+          <span class="alt-row-cond-price">${{ '%.2f'|format(a.threshold_price) }}</span>
+        </div>
+
+        {% if a.is_active %}
+        <span class="alt-badge watching"><span class="dot"></span>Đang theo dõi</span>
+        {% else %}
+        <span class="alt-badge triggered"><span class="dot"></span>Đã kích hoạt</span>
+        {% endif %}
+
+        <form method="post" action="/alerts/{{ a.id }}/delete" style="margin:0">
+          <button type="submit" class="alt-delete-btn">Xoá</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alt-empty">
+      <span class="alt-empty-icon">🔔</span>
+      <div class="alt-empty-text">Bạn chưa đặt cảnh báo nào.</div>
+    </div>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}
+
+{% block extra_js %}
 <script>
-  // Search coin (tái dùng /market/api/search), chọn → điền hidden fields → không gõ sai id.
+  /* ---------- WebGL mesh shader nền (Aurora gốc magenta/violet/cyan) ---------- */
+  (function () {
+    const canvas = document.getElementById('alt-bg-canvas');
+    if (!canvas) return;
+    const gl = canvas.getContext('webgl', { antialias: false, alpha: false });
+    if (!gl) return;
+    const vs = `attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+    const fs = `
+      precision highp float;
+      uniform vec2 u_res; uniform float u_time;
+      float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float noise(vec2 p){
+        vec2 i=floor(p),f=fract(p);
+        vec2 u=f*f*(3.-2.*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+      }
+      float fbm(vec2 p){
+        float v=0.,a=0.5;
+        for(int i=0;i<5;i++){v+=a*noise(p);p*=2.02;a*=0.5;}
+        return v;
+      }
+      void main(){
+        vec2 uv=gl_FragCoord.xy/u_res.xy;
+        vec2 p=uv; p.x*=u_res.x/u_res.y;
+        float t=u_time*0.045;
+        float q=fbm(p*1.6+vec2(t,t*0.6));
+        float r=fbm(p*1.6+vec2(-t*0.7+q,t*0.35+q));
+        float s=fbm(p*2.2+vec2(t*0.5-r,-t*0.4+r));
+        vec3 base=vec3(0.019,0.019,0.027);
+        vec3 magenta=vec3(0.914,0.208,0.757);
+        vec3 violet=vec3(0.545,0.361,0.965);
+        vec3 cyan=vec3(0.133,0.827,0.933);
+        vec3 col=base;
+        col=mix(col,magenta,smoothstep(0.35,0.95,q)*0.34);
+        col=mix(col,violet,smoothstep(0.3,0.9,r)*0.32);
+        col=mix(col,cyan,smoothstep(0.45,0.98,s)*0.26);
+        float vig=smoothstep(1.15,0.15,length((uv-vec2(0.5,0.35))*vec2(1.1,1.4)));
+        col=mix(base,col,0.35+0.65*vig);
+        col*=0.92+0.08*fbm(p*3.0-t);
+        gl_FragColor=vec4(col,1.0);
+      }`;
+    const mk = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); return sh; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, vs));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(prog); gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "p");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const uRes = gl.getUniformLocation(prog, "u_res");
+    const uTime = gl.getUniformLocation(prog, "u_time");
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const w = canvas.clientWidth || window.innerWidth;
+      const h = canvas.clientHeight || window.innerHeight;
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    const start = performance.now();
+    const loop = () => {
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uTime, (performance.now() - start) / 1000);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      requestAnimationFrame(loop);
+    };
+    loop();
+  })();
+
+  /* ---------- Autocomplete coin — GIỮ NGUYÊN logic gốc, chỉ đổi HTML template
+     của mỗi dòng kết quả cho khớp thiết kế mới (avatar tròn + tên + symbol) ---------- */
   const searchInput = document.getElementById("alert-coin-search");
   const resultsBox = document.getElementById("coin-results");
   let timer = null;
@@ -102,11 +310,16 @@
         const res = await fetch(`/market/api/search?q=${encodeURIComponent(q)}`);
         if (!res.ok) return;
         const coins = await res.json();
-        resultsBox.innerHTML = coins.slice(0, 8).map(c =>
-          `<button type="button" class="list-group-item list-group-item-action"
-             data-id="${c.coingecko_id}" data-symbol="${c.symbol}" data-name="${c.name.replace(/"/g,'&quot;')}">
-             ${c.name} <span class="text-muted text-uppercase">${c.symbol}</span>
-           </button>`).join("");
+        resultsBox.innerHTML = coins.slice(0, 8).map(c => {
+          const init = c.symbol.slice(0, 3).toUpperCase();
+          const safeName = c.name.replace(/"/g, "&quot;");
+          return `<button type="button" class="alt-result-row"
+             data-id="${c.coingecko_id}" data-symbol="${c.symbol}" data-name="${safeName}">
+             <span class="alt-result-avatar">${init}</span>
+             <span class="alt-result-name">${c.name}</span>
+             <span class="alt-result-symbol">${c.symbol}</span>
+           </button>`;
+        }).join("");
       } catch (e) { /* lỗi mạng: bỏ qua, không phá form */ }
     }, 300);
   });
