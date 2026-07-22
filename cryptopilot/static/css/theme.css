@@ -66,16 +66,50 @@ a { color: inherit; }
 .text-primary { color: #a78bfa !important; }
 
 /* ===== NAVBAR ===== */
+@keyframes cpNavbarIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 .navbar.cp-navbar {
   background: rgba(5, 5, 7, 0.8) !important;
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--cp-border-soft);
+  animation: cpNavbarIn .5s ease both;
 }
-.cp-navbar .navbar-brand { color: var(--cp-text); font-weight: 600; }
-.cp-navbar .nav-link { color: var(--cp-text-secondary) !important; transition: color .2s; }
+
+/* ---- logo mark "OBI" (thay cho chữ Pilot cũ) ---- */
+.cp-navbar .navbar-brand { color: var(--cp-text); font-weight: 700; font-family: 'Space Grotesk', var(--cp-font); font-size: 1.05rem; letter-spacing: -.01em; }
+.obi-mark { display: inline-flex; align-items: center; gap: 4px; font-weight: 300; font-size: .82em; letter-spacing: -.01em; color: var(--cp-text); line-height: 1; }
+.obi-orb { width: 4.5px; height: 4.5px; border-radius: 50%; background: radial-gradient(circle, #fff, #8b5cf6); box-shadow: 0 0 7px 1.5px rgba(139,92,246,.85); animation: cpObiPulse 1.8s ease-in-out infinite; flex: none; }
+.obi-orb.b { animation-delay: .3s; box-shadow: 0 0 7px 1.5px rgba(233,53,193,.85); background: radial-gradient(circle, #fff, #e935c1); }
+@keyframes cpObiPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.6); opacity: .5; } }
+
+/* ---- menu links: font riêng + gạch chân trượt khi hover + active state ---- */
+.cp-navbar .nav-link {
+  position: relative;
+  color: var(--cp-text-secondary) !important;
+  font-family: 'Space Grotesk', var(--cp-font);
+  font-weight: 500;
+  font-size: .92rem;
+  letter-spacing: .01em;
+  padding-top: .6rem !important;
+  padding-bottom: .6rem !important;
+  margin: 0 .15rem;
+  transition: color .2s ease;
+}
+.cp-navbar .nav-link::after {
+  content: "";
+  position: absolute;
+  left: .5rem; right: .5rem; bottom: .1rem;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--cp-grad-brand);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1);
+}
 .cp-navbar .nav-link:hover { color: var(--cp-text) !important; }
+.cp-navbar .nav-link:hover::after { transform: scaleX(1); }
 .cp-navbar .nav-link.active { color: var(--cp-text) !important; }
+.cp-navbar .nav-link.active::after { transform: scaleX(1); }
 .cp-navbar .navbar-toggler { border-color: var(--cp-border); }
 .cp-navbar .navbar-toggler-icon {
   filter: invert(1) grayscale(100%) brightness(200%);

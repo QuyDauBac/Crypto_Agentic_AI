@@ -1,5 +1,18 @@
 {# templates/portfolio/dashboard.html — GET /portfolio
    Context (see app/api/portfolio.py::dashboard): user, d (app.schemas.transaction.DashboardView)
+
+   REDESIGN NOTE: Toàn bộ Jinja2 logic bên dưới GIỮ NGUYÊN 100% so với bản gốc
+   (không đổi 1 điều kiện/vòng lặp/biến nào) — chỉ thêm:
+   1. <canvas id="cp-bg"> nền WebGL Aurora shader ngay đầu .cp-page
+   2. 1 khối <style> override trong extra_css, đè lên đúng các class .cp-*
+      trang dashboard đang dùng (portfolio.css gốc vẫn giữ nguyên, dùng chung
+      với /portfolio/transactions — KHÔNG bị ảnh hưởng vì override này chỉ
+      nhắm đúng class dashboard dùng)
+   3. 1 đoạn JS mount shader trong extra_js, thêm TRƯỚC script Chart.js/
+      portfolio.js hiện có — không đổi gì trong portfolio.js
+   Mọi hook JS quan trọng (#cp-perf-chart, .cp-tf-btn, data-timeframe,
+   data-role="legend-portfolio"/"legend-btc", .cp-alert-stale,
+   data-action="dismiss-stale-banner") giữ nguyên y hệt bản gốc.
 #}
 {% extends "base.html" %}
 
@@ -7,9 +20,124 @@
 
 {% block extra_css %}
   <link rel="stylesheet" href="{{ url_for('static', path='css/portfolio.css') }}">
+  <style>
+    /* ============================================================
+       AURORA GLASS OVERRIDE — chỉ nhắm đúng class trang /portfolio
+       dùng. KHÔNG đụng class riêng của /portfolio/transactions
+       (cp-tx-panel, cp-buysell-btn, cp-modal, cp-coin-option...).
+       ============================================================ */
+    .cp-bg-canvas { position: fixed; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+    .cp-page { position: relative; z-index: 1; }
+
+    .cp-page-title { color: #f5f5f7; }
+
+    .cp-tabs { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.05); border-radius: 13px; padding: 4px; gap: 2px; }
+    .cp-tab { border: 0; font-weight: 500; font-size: 13.5px; letter-spacing: .01em; padding: 9px 18px; border-radius: 10px; color: rgba(255,255,255,.6); background: transparent; transition: background .15s, color .15s; }
+    .cp-tab:hover { color: #f5f5f7; background: rgba(255,255,255,.05); }
+    .cp-tab.is-active { color: #0b0b10; font-weight: 600; background: linear-gradient(135deg,#e935c1,#8b5cf6 55%,#22d3ee); box-shadow: 0 6px 18px -8px rgba(139,92,246,.9); }
+
+    .cp-alert-stale { display: flex; align-items: center; gap: 14px; padding: 13px 16px; border-radius: 14px; background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.28); box-shadow: inset 0 1px 0 rgba(245,158,11,.12), 0 12px 30px -18px rgba(245,158,11,.5); }
+    .cp-alert-text { font-size: 12.5px; color: rgba(252,211,77,.82); line-height: 1.5; }
+    .cp-alert-dismiss { background: transparent; border: 1px solid rgba(245,158,11,.22); color: rgba(252,211,77,.8); border-radius: 9px; width: 30px; height: 30px; cursor: pointer; }
+    .cp-alert-dismiss:hover { background: rgba(245,158,11,.14); color: #fcd34d; }
+
+    .cp-summary-card { position: relative; padding: 22px 22px 20px; border-radius: 20px; background: rgba(255,255,255,.028); border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 24px 48px -28px rgba(0,0,0,.7); overflow: hidden; }
+    .cp-summary-label { font-size: 12.5px; font-weight: 500; letter-spacing: .02em; color: rgba(255,255,255,.5); text-transform: uppercase; }
+    .cp-summary-value { font-family: var(--cp-mono-font); font-weight: 600; font-size: 31px; letter-spacing: -.02em; color: #f5f5f7; margin: 12px 0 8px; display: block; }
+    .cp-summary-sub { font-size: 12.5px; color: rgba(255,255,255,.42); }
+
+    .cp-summary-card--pnl.is-positive { background: linear-gradient(150deg, rgba(52,211,153,.09), rgba(255,255,255,.02)); border-color: rgba(52,211,153,.3); box-shadow: inset 0 1px 0 rgba(52,211,153,.18), 0 24px 60px -26px rgba(16,185,129,.55); }
+    .cp-summary-card--pnl.is-negative { background: linear-gradient(150deg, rgba(248,113,133,.09), rgba(255,255,255,.02)); border-color: rgba(248,113,133,.32); box-shadow: inset 0 1px 0 rgba(248,113,133,.18), 0 24px 60px -26px rgba(248,113,133,.4); }
+    .cp-summary-glow { position: absolute; top: -40px; right: -30px; width: 150px; height: 150px; border-radius: 50%; pointer-events: none; animation: cpFloat 5s ease-in-out infinite; }
+    .cp-summary-card--pnl.is-positive .cp-summary-glow { background: radial-gradient(circle, rgba(52,211,153,.35), transparent 70%); }
+    .cp-summary-card--pnl.is-negative .cp-summary-glow { background: radial-gradient(circle, rgba(248,113,133,.32), transparent 70%); }
+    @keyframes cpFloat { 0%, 100% { opacity: .5; } 50% { opacity: .9; } }
+    .cp-summary-card--pnl.is-positive .cp-summary-label { color: rgba(167,243,208,.85); }
+    .cp-summary-card--pnl.is-negative .cp-summary-label { color: rgba(254,205,211,.85); }
+    .cp-summary-card--pnl .cp-summary-value { font-weight: 700; font-size: 33px; }
+    .cp-summary-card--pnl.is-positive .cp-summary-value { color: #34d399; text-shadow: 0 0 30px rgba(52,211,153,.45); }
+    .cp-summary-card--pnl.is-negative .cp-summary-value { color: #f87171; text-shadow: 0 0 30px rgba(248,113,113,.4); }
+    .cp-summary-card--pnl.is-positive .cp-summary-sub { color: rgba(167,243,208,.6); }
+    .cp-summary-card--pnl.is-negative .cp-summary-sub { color: rgba(254,205,211,.6); }
+    .cp-pnl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 999px; font-family: var(--cp-mono-font); font-size: 12px; font-weight: 600; margin-right: 8px; }
+    .cp-summary-card--pnl.is-positive .cp-pnl-chip { background: rgba(52,211,153,.16); border: 1px solid rgba(52,211,153,.4); color: #6ee7b7; }
+    .cp-summary-card--pnl.is-negative .cp-pnl-chip { background: rgba(248,113,113,.16); border: 1px solid rgba(248,113,113,.4); color: #fca5a5; }
+
+    .cp-panel { padding: 20px 22px 22px; border-radius: 20px; background: rgba(255,255,255,.028); border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 24px 48px -28px rgba(0,0,0,.7); }
+    .cp-panel-title { font-size: 15px; font-weight: 600; color: #f5f5f7; letter-spacing: -.01em; }
+
+    .cp-chart-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .cp-chart-legend { display: flex; align-items: center; gap: 16px; }
+    .cp-legend-item { display: inline-flex; align-items: center; gap: 7px; }
+    .cp-legend-swatch { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+    .cp-legend-label { font-size: 12px; color: rgba(255,255,255,.55); }
+    .cp-legend-value { font-family: var(--cp-mono-font); font-size: 12px; font-weight: 600; }
+
+    .cp-tf-group { display: inline-flex; padding: 3px; gap: 2px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.09); border-radius: 11px; }
+    .cp-tf-btn { border: 0; cursor: pointer; font-family: var(--cp-mono-font); font-weight: 600; font-size: 12px; padding: 6px 12px; border-radius: 8px; color: rgba(255,255,255,.55); background: transparent; transition: background .15s, color .15s; }
+    .cp-tf-btn:hover:not(.is-active):not(:disabled) { color: #f5f5f7; background: rgba(255,255,255,.06); }
+    .cp-tf-btn.is-active { color: #0b0b10; background: linear-gradient(135deg,#8b5cf6,#22d3ee); }
+    .cp-tf-btn.is-locked, .cp-tf-btn:disabled { cursor: not-allowed; color: rgba(255,255,255,.28); display: inline-flex; align-items: center; gap: 5px; }
+    .cp-tf-badge { font-family: var(--cp-mono-font); font-size: 9.5px; font-weight: 600; padding: 2px 5px; border-radius: 6px; background: rgba(245,158,11,.14); border: 1px solid rgba(245,158,11,.3); color: #fbbf24; }
+
+    .cp-chart-canvas-wrap { position: relative; height: 264px; margin-top: 18px; }
+    .cp-chart-empty { height: 264px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; border-radius: 14px; background: rgba(255,255,255,.015); border: 1px dashed rgba(255,255,255,.1); margin-top: 14px; }
+    .cp-chart-empty p { max-width: 320px; margin: 0; font-size: 12.5px; color: rgba(255,255,255,.45); line-height: 1.5; }
+
+    .cp-donut-wrap { display: flex; justify-content: center; margin: 4px 0 20px; }
+    .cp-donut { position: relative; width: 168px; height: 168px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+    .cp-donut-inner { position: absolute; inset: 22px; border-radius: 50%; background: #0a0a0f; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 8px 24px -8px rgba(0,0,0,.8); }
+    .cp-donut-label { font-size: 11.5px; letter-spacing: .06em; color: rgba(255,255,255,.42); text-transform: uppercase; }
+    .cp-donut-count { font-family: var(--cp-mono-font); font-size: 30px; font-weight: 600; color: #f5f5f7; line-height: 1; margin-top: 3px; }
+
+    .cp-alloc-list { display: flex; flex-direction: column; gap: 12px; }
+    .cp-alloc-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+    .cp-alloc-dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+    .cp-alloc-sym { font-weight: 600; color: #f5f5f7; }
+    .cp-alloc-track { flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,.07); overflow: hidden; }
+    .cp-alloc-fill { height: 100%; border-radius: 3px; }
+    .cp-alloc-pct { font-family: var(--cp-mono-font); font-weight: 600; color: rgba(255,255,255,.6); }
+
+    .cp-card-block { padding: 22px; border-radius: 20px; background: rgba(255,255,255,.028); border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 24px 48px -28px rgba(0,0,0,.7); }
+    .cp-card-block-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .cp-link-arrow { font-size: 13px; font-weight: 600; color: #a78bfa; display: inline-flex; align-items: center; gap: 5px; }
+    .cp-link-arrow:hover { color: #c4b5fd; }
+
+    table.cp-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+    .cp-table thead th { padding: 0 14px 12px 0; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: rgba(255,255,255,.4); text-align: right; }
+    .cp-table thead th:first-child { text-align: left; }
+    .cp-table tbody tr { border-top: 1px solid rgba(255,255,255,.06); }
+    .cp-table td { padding: 14px; text-align: right; font-size: 13px; font-family: var(--cp-mono-font); }
+    .cp-coin-cell { display: flex; align-items: center; gap: 11px; text-align: left; font-family: var(--cp-display-font); }
+    .cp-coin-avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--cp-display-font); font-weight: 700; font-size: 13px; color: #fff; }
+    .cp-coin-name { font-family: var(--cp-display-font); font-weight: 600; font-size: 13.5px; color: #f5f5f7; }
+    .cp-coin-sym { font-family: var(--cp-display-font); font-size: 11.5px; color: rgba(255,255,255,.4); }
+    .cp-alloc-cell { text-align: left; }
+
+    .cp-cards-mobile { display: none; flex-direction: column; gap: 12px; }
+    .cp-mobile-card { padding: 15px; border-radius: 16px; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.07); }
+    .cp-mobile-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .cp-mobile-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; font-size: 12px; font-family: var(--cp-mono-font); }
+    .cp-mobile-label { font-size: 10.5px; color: rgba(255,255,255,.4); margin-bottom: 2px; font-family: var(--cp-display-font); }
+
+    .cp-empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 64px 24px; border-radius: 22px; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.07); }
+    .cp-empty-icon-wrap { position: relative; margin-bottom: 22px; }
+    .cp-empty-icon-glow { position: absolute; inset: -20px; border-radius: 50%; background: radial-gradient(circle, rgba(139,92,246,.35), transparent 70%); filter: blur(6px); }
+    .cp-empty-icon-ring { position: relative; width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(139,92,246,.08); border: 1px solid rgba(139,92,246,.25); }
+    .cp-empty-title { margin: 0 0 10px; font-family: var(--cp-display-font); font-size: 22px; font-weight: 600; color: #f5f5f7; }
+    .cp-empty-text { margin: 0 auto 28px; max-width: 400px; font-size: 14px; line-height: 1.6; color: rgba(255,255,255,.48); }
+    .cp-btn-aurora { display: inline-flex; align-items: center; gap: 8px; border: 0; cursor: pointer; font-weight: 600; font-size: 14.5px; letter-spacing: .01em; padding: 13px 26px; border-radius: 13px; color: #0b0b10; background: linear-gradient(135deg,#e935c1,#8b5cf6 55%,#22d3ee); box-shadow: 0 14px 34px -12px rgba(139,92,246,.9); text-decoration: none; }
+    .cp-btn-aurora:hover { filter: brightness(1.08); }
+
+    @media (max-width: 640px) {
+      .cp-table-scroll { display: none !important; }
+      .cp-cards-mobile { display: flex !important; }
+    }
+  </style>
 {% endblock %}
 
 {% block content %}
+<canvas id="cp-bg" class="cp-bg-canvas"></canvas>
 <div class="cp-page">
 
   <div class="cp-header-row">
@@ -258,6 +386,83 @@
 {% endblock %}
 
 {% block extra_js %}
+  <script>
+    /* ---------- WebGL mesh shader nền (Aurora gốc magenta/violet/cyan) ---------- */
+    (function () {
+      const canvas = document.getElementById('cp-bg');
+      if (!canvas) return;
+      const gl = canvas.getContext('webgl', { antialias: false, premultipliedAlpha: false });
+      if (!gl) return;
+
+      const vs = 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }';
+      const fs = [
+        'precision highp float;',
+        'uniform vec2 res; uniform float t;',
+        'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }',
+        'float noise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); vec2 u=f*f*(3.0-2.0*f);',
+        '  return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),u.x), mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),u.x), u.y); }',
+        'float fbm(vec2 p){ float v=0.0; float a=0.5; mat2 m=mat2(1.6,1.2,-1.2,1.6);',
+        '  for(int i=0;i<6;i++){ v+=a*noise(p); p=m*p; a*=0.5; } return v; }',
+        'void main(){',
+        '  vec2 uv = gl_FragCoord.xy / res.xy;',
+        '  vec2 asp = vec2(res.x/res.y, 1.0);',
+        '  vec2 p = (uv - 0.5) * asp * 2.2;',
+        '  float tt = t * 0.045;',
+        '  vec2 q = vec2(fbm(p + vec2(0.0, tt)), fbm(p + vec2(4.3, -tt*0.8)));',
+        '  vec2 r = vec2(fbm(p + 2.4*q + vec2(1.7, 9.2) + tt*0.6), fbm(p + 2.4*q + vec2(8.3, 2.8) - tt*0.5));',
+        '  float f = fbm(p + 3.5*r);',
+        '  vec3 magenta = vec3(0.914,0.208,0.757);',
+        '  vec3 violet  = vec3(0.545,0.361,0.965);',
+        '  vec3 cyan    = vec3(0.133,0.827,0.933);',
+        '  vec3 col = mix(magenta, violet, smoothstep(0.15,0.75,f));',
+        '  col = mix(col, cyan, smoothstep(0.4,0.95,length(r)));',
+        '  float glow = pow(f, 2.2) * (0.55 + 0.45*length(q));',
+        '  vec3 bg = vec3(0.02,0.02,0.027);',
+        '  vec3 outc = bg + col * glow * 0.42;',
+        '  float vig = smoothstep(1.5, 0.35, length((uv-0.5)*asp));',
+        '  outc *= mix(0.55, 1.0, vig);',
+        '  gl_FragColor = vec4(outc, 1.0);',
+        '}'
+      ].join('\n');
+
+      const compile = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(prog);
+      gl.useProgram(prog);
+
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, 'p');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+      const uRes = gl.getUniformLocation(prog, 'res');
+      const uT = gl.getUniformLocation(prog, 't');
+
+      const resize = () => {
+        const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+        const w = Math.floor(window.innerWidth * dpr);
+        const h = Math.floor(window.innerHeight * dpr);
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.uniform2f(uRes, canvas.width, canvas.height);
+      };
+      window.addEventListener('resize', resize);
+      resize();
+
+      const start = performance.now();
+      const loop = () => {
+        gl.uniform1f(uT, (performance.now() - start) / 1000);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        requestAnimationFrame(loop);
+      };
+      loop();
+    })();
+  </script>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script>
     window.CP_CHART_DATA = {{ chart_data | tojson }};
