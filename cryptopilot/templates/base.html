@@ -7,50 +7,96 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,340..600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="{{ url_for('static', path='css/theme.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', path='css/app.css') }}" rel="stylesheet">
   {% block extra_css %}{% endblock %}
 </head>
 <body class="d-flex flex-column min-vh-100">
-  <nav class="navbar navbar-expand-lg cp-navbar sticky-top">
-    <div class="container">
-      <a class="navbar-brand fw-bold d-inline-flex align-items-center gap-2" href="/">
-        <span class="obi-mark">O<span class="obi-orb"></span>B<span class="obi-orb b"></span>I</span>
-        <span class="grad-text">Crypto</span>
+  <nav class="cp-navbar" id="cp-navbar" aria-label="Điều hướng chính">
+    <div class="container cp-navbar-inner">
+      <a class="cp-brand" href="/">
+        <span class="cp-brand-mark">O<span class="cp-brand-orb"></span>B<span class="cp-brand-orb b"></span>I</span>
+        <span class="cp-brand-text grad-text">Crypto</span>
       </a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="nav">
-        <ul class="navbar-nav ms-auto align-items-lg-center">
-          {% if user %}
-            <li class="nav-item"><a class="nav-link {{ 'active' if request.url.path.startswith('/portfolio') }}" href="/portfolio">Danh mục</a></li>
-            <li class="nav-item"><a class="nav-link {{ 'active' if request.url.path.startswith('/market') }}" href="/market">🔍 Thị trường</a></li>
-            <li class="nav-item"><a class="nav-link {{ 'active' if request.url.path.startswith('/wallet') }}" href="/wallet">🔗 Ví OKX</a></li>
-            <li class="nav-item"><a class="nav-link {{ 'active' if request.url.path.startswith('/agent') }}" href="/agent">🤖 Trợ lý AI</a></li>
-            <li class="nav-item"><a class="nav-link {{ 'active' if request.url.path.startswith('/alerts') }}" href="/alerts">Cảnh báo</a></li>
-            {% if user.is_admin %}
-            <li class="nav-item"><a class="nav-link {{ 'active' if request.url.path.startswith('/admin') }}" href="/admin">🛠️ Quản trị</a></li>
-            {% endif %}
-            <li class="nav-item">
-              <a class="nav-link position-relative {{ 'active' if request.url.path.startswith('/notifications') }}" href="/notifications">🔔 Thông báo
-                <span id="notif-badge" class="badge rounded-pill bg-danger d-none position-absolute top-0 start-100 translate-middle">0</span>
-              </a>
-            </li>
-            <li class="nav-item">
-              <form method="post" action="/logout" class="d-inline m-0">
-                <button class="btn btn-sm btn-cp-glass ms-lg-2 px-3" type="submit">
-                  Đăng xuất ({{ user.display_name or user.email }})
-                </button>
-              </form>
-            </li>
-          {% else %}
-            <li class="nav-item"><a class="nav-link" href="/login">Đăng nhập</a></li>
-            <li class="nav-item"><a class="nav-link btn-cp-pink px-3 py-1 ms-lg-2" href="/register">Đăng ký</a></li>
-          {% endif %}
-        </ul>
+
+      {% if user %}
+      <div class="cp-nav-pills" id="navPills">
+        <div class="cp-pill-indicator" id="pillIndicator"></div>
+
+        <a class="cp-nav-item {{ 'active' if request.url.path.startswith('/portfolio') }}" href="/portfolio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/>
+            <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/>
+          </svg>
+          <span>Danh mục</span>
+        </a>
+
+        <a class="cp-nav-item {{ 'active' if request.url.path.startswith('/market') }}" href="/market">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/>
+          </svg>
+          <span>Thị trường</span>
+        </a>
+
+        <a class="cp-nav-item {{ 'active' if request.url.path.startswith('/wallet') }}" href="/wallet">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13.2a4.6 4.6 0 0 0 6.6 0l1.8-1.8a4.6 4.6 0 0 0-6.5-6.5l-.9.9"/>
+            <path d="M14 10.8a4.6 4.6 0 0 0-6.6 0l-1.8 1.8a4.6 4.6 0 0 0 6.5 6.5l.9-.9"/>
+          </svg>
+          <span>Ví OKX</span>
+        </a>
+
+        <a class="cp-nav-item {{ 'active' if request.url.path.startswith('/agent') }}" href="/agent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+            <path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9z"/>
+            <path d="M19 15l.6 1.8 1.9.6-1.9.6-.6 1.8-.6-1.8-1.9-.6 1.9-.6z"/>
+          </svg>
+          <span>Trợ lý AI</span>
+        </a>
+
+        <a class="cp-nav-item {{ 'active' if request.url.path.startswith('/alerts') }}" href="/alerts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.5l9 15.5H3z"/><line x1="12" y1="10" x2="12" y2="14.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>Cảnh báo</span>
+        </a>
+
+        {% if user.is_admin %}
+        <a class="cp-nav-item {{ 'active' if request.url.path.startswith('/admin') }}" href="/admin">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3.2"/>
+            <path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M17.8 6.2l-1.6 1.6M7.8 16.2l-1.6 1.6M17.8 17.8l-1.6-1.6M7.8 7.8L6.2 6.2"/>
+          </svg>
+          <span>Quản trị</span>
+        </a>
+        {% endif %}
+
+        <a class="cp-nav-item {{ 'active' if request.url.path.startswith('/notifications') }}" href="/notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.2a4.3 4.3 0 0 0-4.3 4.3v3.3c0 .6-.2 1.2-.6 1.7L6 14.3h12l-1.1-1.8a2.9 2.9 0 0 1-.6-1.7V7.5A4.3 4.3 0 0 0 12 3.2z"/>
+            <path d="M9.6 17.3a2.5 2.5 0 0 0 4.8 0"/>
+          </svg>
+          <span>Thông báo</span>
+          <span id="notif-badge" class="cp-nav-badge d-none">0</span>
+        </a>
       </div>
+
+      <div class="cp-nav-right">
+        <div class="cp-divider"></div>
+        <form method="post" action="/logout" class="cp-logout-form">
+          <button class="cp-logout" type="submit">
+            <span class="cp-avatar">{{ (user.display_name or user.email)[0]|upper }}</span>
+            <span>Đăng xuất ({{ user.display_name or user.email }})</span>
+          </button>
+        </form>
+      </div>
+      {% else %}
+      <div class="cp-nav-right">
+        <a class="cp-logout" href="/login"><span>Đăng nhập</span></a>
+        <a class="cp-logout btn-cp-pink" href="/register"><span>Đăng ký</span></a>
+      </div>
+      {% endif %}
     </div>
   </nav>
 
@@ -83,6 +129,19 @@
     }
     refresh();
     setInterval(refresh, 15000);  // poll mỗi 15s
+  })();
+  </script>
+  <script>
+  (function () {
+    const indicator = document.getElementById("pillIndicator");
+    const active = document.querySelector(".cp-nav-item.active");
+    if (!indicator || !active) return;
+    function moveIndicator() {
+      indicator.style.width = active.offsetWidth + "px";
+      indicator.style.transform = "translateX(" + active.offsetLeft + "px)";
+    }
+    moveIndicator();
+    window.addEventListener("resize", moveIndicator);
   })();
   </script>
   {% endif %}

@@ -37,6 +37,11 @@
   --cp-radius-sm: 12px;
   --cp-radius-pill: 999px;
   --cp-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  /* Bộ 3 màu thương hiệu (dạng màu đơn, dùng cho glow/badge/indicator) */
+  --cp-magenta: #e935c1;
+  --cp-violet: #8b5cf6;
+  --cp-cyan: #22d3ee;
 }
 
 /* ===== BASE ===== */
@@ -65,69 +70,156 @@ a { color: inherit; }
 .text-danger { color: var(--cp-danger) !important; }
 .text-primary { color: #a78bfa !important; }
 
-/* ===== NAVBAR ===== */
+/* ===== NAVBAR (Aurora pill nav — Fraunces wordmark + Space Grotesk labels) ===== */
 @keyframes cpNavbarIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-.navbar.cp-navbar {
-  background: rgba(5, 5, 7, 0.8) !important;
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+@keyframes cpObiPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.6); opacity: .5; } }
+@keyframes cpBadgePing { 0% { transform: scale(1); opacity: .5; } 75%, 100% { transform: scale(2.2); opacity: 0; } }
+
+.cp-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(5, 5, 7, 0.92);
   border-bottom: 1px solid var(--cp-border-soft);
   animation: cpNavbarIn .5s ease both;
 }
+.cp-navbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 0;
+}
 
-/* ---- logo mark "OBI" (thay cho chữ Pilot cũ) ---- */
-.cp-navbar .navbar-brand { color: var(--cp-text); font-weight: 700; font-family: 'Space Grotesk', var(--cp-font); font-size: 1.05rem; letter-spacing: -.01em; }
-.obi-mark { display: inline-flex; align-items: center; gap: 4px; font-weight: 300; font-size: .82em; letter-spacing: -.01em; color: var(--cp-text); line-height: 1; }
-.obi-orb { width: 4.5px; height: 4.5px; border-radius: 50%; background: radial-gradient(circle, #fff, #8b5cf6); box-shadow: 0 0 7px 1.5px rgba(139,92,246,.85); animation: cpObiPulse 1.8s ease-in-out infinite; flex: none; }
-.obi-orb.b { animation-delay: .3s; box-shadow: 0 0 7px 1.5px rgba(233,53,193,.85); background: radial-gradient(circle, #fff, #e935c1); }
-@keyframes cpObiPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.6); opacity: .5; } }
+/* ---- wordmark "OBI" + "Crypto" ---- */
+.cp-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; text-decoration: none; }
+.cp-brand-mark { display: inline-flex; align-items: center; gap: 4px; font-weight: 300; font-size: 1.05rem; letter-spacing: -.01em; color: var(--cp-text); font-family: 'Space Grotesk', var(--cp-font); line-height: 1; }
+.cp-brand-orb { width: 4.5px; height: 4.5px; border-radius: 50%; background: radial-gradient(circle, #fff, var(--cp-violet)); box-shadow: 0 0 7px 1.5px rgba(139,92,246,.85); animation: cpObiPulse 1.8s ease-in-out infinite; flex: none; }
+.cp-brand-orb.b { animation-delay: .3s; box-shadow: 0 0 7px 1.5px rgba(233,53,193,.85); background: radial-gradient(circle, #fff, var(--cp-magenta)); }
+.cp-brand-text { font-family: 'Fraunces', serif; font-weight: 480; font-size: 1.2rem; letter-spacing: .2px; }
 
-/* ---- menu links: font riêng + gạch chân trượt khi hover + active state ---- */
-.cp-navbar .nav-link {
+/* ---- pill nav với indicator trượt sau tab đang active ---- */
+.cp-nav-pills {
   position: relative;
-  color: var(--cp-text-secondary) !important;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--cp-radius-pill);
+  padding: 4px;
+}
+.cp-pill-indicator {
+  position: absolute;
+  top: 4px; bottom: 4px; left: 0;
+  width: 0;
+  z-index: 0;
+  border-radius: var(--cp-radius-pill);
+  background: linear-gradient(90deg, rgba(233,53,193,0.20), rgba(139,92,246,0.22) 50%, rgba(34,211,238,0.20));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 26px -4px rgba(139,92,246,0.6), inset 0 1px 0 rgba(255,255,255,0.08);
+  transition: transform .5s cubic-bezier(.16,1,.3,1), width .5s cubic-bezier(.16,1,.3,1);
+}
+.cp-nav-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  text-decoration: none;
+  color: var(--cp-text-secondary);
   font-family: 'Space Grotesk', var(--cp-font);
   font-weight: 500;
-  font-size: .92rem;
-  letter-spacing: .01em;
-  padding-top: .6rem !important;
-  padding-bottom: .6rem !important;
-  margin: 0 .15rem;
-  transition: color .2s ease;
+  font-size: 13.5px;
+  letter-spacing: .1px;
+  border-radius: var(--cp-radius-pill);
+  white-space: nowrap;
+  transition: color .3s ease, transform .3s ease;
 }
-.cp-navbar .nav-link::after {
+.cp-nav-item svg { width: 16px; height: 16px; flex-shrink: 0; transition: filter .3s ease; }
+.cp-nav-item:hover { color: var(--cp-text); transform: translateY(-1px); }
+.cp-nav-item.active { color: var(--cp-text); }
+.cp-nav-item.active svg { filter: drop-shadow(0 0 6px rgba(139,92,246,.85)); }
+.cp-nav-item:focus-visible { outline: 2px solid var(--cp-cyan); outline-offset: 2px; }
+
+/* ---- badge số thông báo chưa đọc, có vòng ping ---- */
+.cp-nav-badge {
+  position: absolute;
+  top: 4px; right: 8px;
+  min-width: 15px; height: 15px;
+  padding: 0 4px;
+  border-radius: var(--cp-radius-pill);
+  background: linear-gradient(135deg, var(--cp-magenta), var(--cp-cyan));
+  color: #0b0710;
+  font-family: 'Space Grotesk', var(--cp-font);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cp-nav-badge::after {
   content: "";
   position: absolute;
-  left: .5rem; right: .5rem; bottom: .1rem;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--cp-grad-brand);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform .25s cubic-bezier(.34,1.56,.64,1);
-}
-.cp-navbar .nav-link:hover { color: var(--cp-text) !important; }
-.cp-navbar .nav-link:hover::after { transform: scaleX(1); }
-.cp-navbar .nav-link.active { color: var(--cp-text) !important; }
-.cp-navbar .nav-link.active::after { transform: scaleX(1); }
-.cp-navbar .navbar-toggler { border-color: var(--cp-border); }
-.cp-navbar .navbar-toggler-icon {
-  filter: invert(1) grayscale(100%) brightness(200%);
+  inset: -5px;
+  z-index: -1;
+  border-radius: 50%;
+  background: var(--cp-cyan);
+  opacity: .5;
+  animation: cpBadgePing 2.2s cubic-bezier(0,0,.2,1) infinite;
 }
 
-/* nút glass dùng cho logout / secondary actions trong navbar */
-.btn-cp-glass {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--cp-border);
-  color: var(--cp-text) !important;
+/* ---- vùng bên phải: divider + đăng xuất / đăng nhập ---- */
+.cp-nav-right { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.cp-divider { width: 1px; height: 22px; background: rgba(255, 255, 255, 0.10); }
+.cp-logout-form { margin: 0; }
+.cp-logout {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 14px 6px 6px;
   border-radius: var(--cp-radius-pill);
-  transition: background .2s ease, border-color .2s ease, transform .2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--cp-text-secondary);
+  font-family: 'Space Grotesk', var(--cp-font);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .3s ease, color .3s ease, box-shadow .3s ease;
 }
-.btn-cp-glass:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: var(--cp-border-strong);
-  color: var(--cp-text);
-  transform: translateY(-1px);
+.cp-logout:hover { color: var(--cp-text); border-color: rgba(233,53,193,0.45); box-shadow: 0 0 22px -6px rgba(233,53,193,0.55); }
+.cp-logout:focus-visible { outline: 2px solid var(--cp-cyan); outline-offset: 2px; }
+.cp-avatar {
+  width: 25px; height: 25px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--cp-magenta), var(--cp-cyan));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0b0710;
+}
+
+@media (max-width: 760px) {
+  .cp-brand-text { display: none; }
+  .cp-nav-item span { display: none; }
+  .cp-nav-item { padding: 9px 10px; }
+  .cp-logout-form .cp-logout span:last-child { display: none; }
+  .cp-logout-form .cp-logout { padding: 6px; }
+  .cp-navbar-inner { gap: 10px; }
+  .cp-nav-pills { gap: 0; padding: 3px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-navbar, .cp-brand-orb, .cp-pill-indicator, .cp-nav-badge::after { animation: none !important; transition: none !important; }
 }
 
 /* ===== GRADIENT / PILL BUTTONS (dùng cho quick-access, CTA) ===== */
